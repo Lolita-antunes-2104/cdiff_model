@@ -5,17 +5,25 @@ library(reshape2)
 library(dplyr)
 
 ###Model (method2)
-SIR.model <- function(t, pop, param) {
+cdiff_model <- function(t, pop, params) {
   
-  with(as.list(c(pop, param)), {
+  with(as.list(c(pop, params)), {
   
-    N=S+I+R
+    #population totale
+    N = S0 + SA + C0 + CA + I + R
     
-    dS <- -beta*S*I/N + u0*N - u1*S
-    dI <- beta*S*I/N  - gamma*I - u1*I
-    dR <-  gamma*I - u1*R
+    #force d'infection
+    lambda = beta * (C0 + CA + nu*I)/N
     
-    res<-c(dS, dI, dR)
+    #equations diff
+    dS0 <- -lambda*S0 + gamma*C0 - tau*S0 
+    dSA <- -lambda*SA + gamma*CA + tau*S0 + phi*R
+    dC0 <- lambda*S0 - gamma*C0 - sigma*C0 - tau*C0
+    dCA <- lambda*SA - gamma*CA - sigma_A*CA + tau*C0
+    dI <- sigma*C0  + sigma_A*CA - epsilon*I + sigma_A*R
+    dR <-  epsilon*I - sigma_A*R - phi*R
+    
+    res<-c(dS0, dSA, dC0, dCA, dI, dR)
     
     list(res)
     
@@ -24,26 +32,36 @@ SIR.model <- function(t, pop, param) {
 }
 
 # Paramètres
-beta=0.6
-gamma=1/3
+beta=0.021
+nu=36
+gamma=0.03
+sigma=0.000445
+sigma_A=sigma*6.67
+tau=0.044
+epsilon=0.07
+phi=0.018
+
+#Simulation
 dt=1
-Tmax=14
-N=30
-u0=0
-u1=0
+Tmax=140
 
 # Conditions initiales
-I0=1
-S0=N-I0
-R0=0
+N=30
+I_0=1
+R_0=0
+C0_0=4
+CA_0=1
+S0_0=N-C0_0-CA_0-I_0
+SA_0=0
+
 
 # Création des vecteurs à partir des différentes valeurs
-Time=seq(from=0,to=Tmax,by=dt)
-Init.cond=c(S=S0,I=I0, R=R0) 
-param=c(beta,gamma,u0,u1)
+times=seq(from=0, to=Tmax, by=dt)
+init.cond=c(S0=S0_0, SA=SA_0, C0=C0_0, CA=CA_0, I=I_0, R=R_0) 
+params=c(beta, nu, gamma, sigma, sigma_A, tau, epsilon, phi)
 
 # Intégration : fonction lsoda (pour résoudre edo) avec as.data.frame() autour pour un output plus pratique
-result <- as.data.frame(lsoda(Init.cond, Time, SIR.model, param))
+result <- as.data.frame(lsoda(init.cond, times, cdiff_model, params))
 
 # Méthode ggplot
 result %>%
