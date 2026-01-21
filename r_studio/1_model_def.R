@@ -137,5 +137,3 @@ create_initial_conditions <- function(N_h, N_c, prev = 0.01, prev_rec = 0.005) {
 
 
 
-
-
