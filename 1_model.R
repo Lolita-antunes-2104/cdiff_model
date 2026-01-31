@@ -64,7 +64,11 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     dS_III_h <-  p_h*epsilon_h*(I_II_h + I_III_h)     - lambda_h*S_III_h  + gamma_h*C_III_h  - phi_h*S_III_h          + alpha*S_III_c - delta*S_III_h
     dC_III_h <- (1-p_h)*epsilon_h*(I_II_h + I_III_h)  + lambda_h*S_III_h  - gamma_h*C_III_h  - k_III*sigma_h*C_III_h  + alpha*C_III_c - delta*C_III_h
     dI_III_h <-  k_III*sigma_h*C_III_h  - epsilon_h*I_III_h                                                           + alpha_III*I_III_c - delta_III*I_III_h
-    
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_h <- sigma_h*C0_h + k_A*sigma_h*CA_h + k_II*sigma_h*C_II_h + k_III*sigma_h*C_III_h
+    dprimo_CumI_h <- sigma_h*C0_h + k_A*sigma_h*CA_h 
+    drec_CumI_h <- k_II*sigma_h*C_II_h + k_III*sigma_h*C_III_h
+
     #  ---- ODE COMMUNITY ----
     # Primary 
     dS0_c <- -lambda_c*S0_c  + gamma_c*C0_c  - tau_c*S0_c  + omega_c*SA_c  + phi_c*(S_II_c + S_III_c)                 - alpha*S0_c + delta*S0_h
@@ -80,15 +84,21 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     dS_III_c <-  p_c*epsilon_c*(I_II_c + I_III_c)     - lambda_c*S_III_c  + gamma_c*C_III_c  - phi_c*S_III_c          - alpha*S_III_c + delta*S_III_h + prop*(delta_II*I_II_h + delta_III*I_III_h)
     dC_III_c <- (1-p_c)*epsilon_c*(I_II_c + I_III_c)  + lambda_c*S_III_c  - gamma_c*C_III_c  - k_III*sigma_c*C_III_c  - alpha*C_III_c + delta*C_III_h + (1-prop)*(delta_II*I_II_h + delta_III*I_III_h)
     dI_III_c <-  k_III*sigma_c*C_III_c  - epsilon_c*I_III_c                                                           - alpha_III*I_III_c
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_c <- sigma_c*C0_c + k_A*sigma_c*CA_c + k_II*sigma_c*C_II_c + k_III*sigma_c*C_III_c
+    dprimo_CumI_c <- sigma_c*C0_c + k_A*sigma_c*CA_c 
+    drec_CumI_c <- k_II*sigma_c*C_II_c + k_III*sigma_c*C_III_c
     
     return(list(
       c(dS0_h, dSA_h, dC0_h, dCA_h, dI_h,
         dS_II_h, dC_II_h, dI_II_h,
         dS_III_h, dC_III_h, dI_III_h,
+        dCumI_h, dprimo_CumI_h, drec_CumI_h,
         
         dS0_c, dSA_c, dC0_c, dCA_c, dI_c,
         dS_II_c, dC_II_c, dI_II_c,
-        dS_III_c, dC_III_c, dI_III_c)))
+        dS_III_c, dC_III_c, dI_III_c,
+        dCumI_c, dprimo_CumI_c, drec_CumI_c)))
   })
 }
 
@@ -110,15 +120,15 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     C_h <- tot_h_nv$C + tot_h_v$C
     C_c <- tot_c_nv$C + tot_c_v$C
     
-    I_tot_h <- tot_h_nv$I + tot_h_v$I
-    I_tot_c <- tot_c_nv$I + tot_c_v$I
+    I_tot_h <- tot_h_nv$I_tot + tot_h_v$I_tot
+    I_tot_c <- tot_c_nv$I_tot + tot_c_v$I_tot
     
     N_h <- tot_h_nv$N + tot_h_v$N 
     N_c <- tot_c_nv$N + tot_c_v$N 
   
     # ---- Force of infection (shared across vaccinated and non-vaccinated, but separated for hospital and community) ----
-    lambda_h <- compute_lambda(beta_h, C_h, I_tot_h, N_tot_h, nu_h)
-    lambda_c <- compute_lambda(beta_c, C_c, I_tot_c, N_tot_c, nu_c)
+    lambda_h <- compute_lambda(beta_h, C_h, I_tot_h, N_h, nu_h)
+    lambda_c <- compute_lambda(beta_c, C_c, I_tot_c, N_c, nu_c)
     
     # ---- Fixed alpha (hospital admissions) ----
     
@@ -144,6 +154,10 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dS_III_h_nv <-  p_h*epsilon_h*(I_II_h_nv + I_III_h_nv)    - lambda_h*S_III_h_nv  + gamma_h*C_III_h_nv  - phi_h*S_III_h_nv          + alpha*S_III_c_nv - delta*S_III_h_nv
     dC_III_h_nv <- (1-p_h)*epsilon_h*(I_II_h_nv + I_III_h_nv) + lambda_h*S_III_h_nv  - gamma_h*C_III_h_nv  - k_III*sigma_h*C_III_h_nv  + alpha*C_III_c_nv - delta*C_III_h_nv
     dI_III_h_nv <-  k_III*sigma_h*C_III_h_nv  - epsilon_h*I_III_h_nv                                                                   + alpha_III*I_III_c_nv - delta_III*I_III_h_nv
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_h_nv <- sigma_h*C0_h_nv + k_A*sigma_h*CA_h_nv + k_II*sigma_h*C_II_h_nv + k_III*sigma_h*C_III_h_nv
+    dprimo_CumI_h_nv <- sigma_h*C0_h_nv + k_A*sigma_h*CA_h_nv 
+    drec_CumI_h_nv <- k_II*sigma_h*C_II_h_nv + k_III*sigma_h*C_III_h_nv
 
     # ---- ODE COMMUNITY / NON VACCINATED ----
     # Primary
@@ -160,59 +174,76 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dS_III_c_nv <-  p_c*epsilon_c*(I_II_c_nv + I_III_c_nv)    - lambda_c*S_III_c_nv  + gamma_c*C_III_c_nv  - phi_c*S_III_c_nv          - alpha*S_III_c_nv + delta*S_III_h_nv + prop*(delta_II*I_II_h_nv + delta_III*I_III_h_nv)
     dC_III_c_nv <- (1-p_c)*epsilon_c*(I_II_c_nv + I_III_c_nv) + lambda_c*S_III_c_nv  - gamma_c*C_III_c_nv  - k_III*sigma_c*C_III_c_nv  - alpha*C_III_c_nv + delta*C_III_h_nv + (1-prop)*(delta_II*I_II_h_nv + delta_III*I_III_h_nv)
     dI_III_c_nv <-  k_III*sigma_c*C_III_c_nv  - epsilon_c*I_III_c_nv                                                                   - alpha_III*I_III_c_nv
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_c_nv <- sigma_c*C0_c_nv + k_A*sigma_c*CA_c_nv + k_II*sigma_c*C_II_c_nv + k_III*sigma_c*C_III_c_nv
+    dprimo_CumI_c_nv <- sigma_c*C0_c_nv + k_A*sigma_c*CA_c_nv 
+    drec_CumI_c_nv <- k_II*sigma_c*C_II_c_nv + k_III*sigma_c*C_III_c_nv
     
     # ---- HOSPITAL / VACCINATED ----
     # Primary
-    dS0_h_v <- -lambda_h*S0_h_v  + gamma_h*C0_h_v  - tau_h*S0_h_v  + omega_h*SA_h_v  + phi_h*(S_II_h_v + S_III_h_v)              + alpha*S0_c_v - delta*S0_h_v
-    dSA_h_v <- -lambda_h*SA_h_v  + gamma_h*CA_h_v  + tau_h*S0_h_v  - omega_h*SA_h_v                                              + alpha*SA_c_v - delta*SA_h_v
-    dC0_h_v <-  lambda_h*S0_h_v  - gamma_h*C0_h_v  - tau_h*C0_h_v  + omega_h*CA_h_v  - sigma_h*C0_h_v                            + alpha*C0_c_v - delta*C0_h_v
-    dCA_h_v <-  lambda_h*SA_h_v  - gamma_h*CA_h_v  + tau_h*C0_h_v  - omega_h*CA_h_v  - k_A*sigma_h*CA_h_v                        + alpha*CA_c_v - delta*CA_h_v
-    dI_h_v  <-  sigma_h*C0_h_v  + k_A*sigma_h*CA_h_v  - epsilon_h*I_h_v                                                          + alpha_I*I_c_v - delta_I*I_h_v
+    dS0_h_v <- -lambda_h*S0_h_v  + gamma_h*C0_h_v  - tau_h_red*S0_h_v  + omega_h*SA_h_v  + phi_h*(S_II_h_v + S_III_h_v)            + alpha*S0_c_v - delta*S0_h_v
+    dSA_h_v <- -lambda_h*SA_h_v  + gamma_h*CA_h_v  + tau_h_red*S0_h_v  - omega_h*SA_h_v                                            + alpha*SA_c_v - delta*SA_h_v
+    dC0_h_v <-  lambda_h*S0_h_v  - gamma_h*C0_h_v  - tau_h_red*C0_h_v  + omega_h*CA_h_v  - sigma_h_v*C0_h_v                        + alpha*C0_c_v - delta*C0_h_v
+    dCA_h_v <-  lambda_h*SA_h_v  - gamma_h*CA_h_v  + tau_h_red*C0_h_v  - omega_h*CA_h_v  - k_A*sigma_h_v*CA_h_v                    + alpha*CA_c_v - delta*CA_h_v
+    dI_h_v  <-  sigma_h_v*C0_h_v  + k_A*sigma_h_v*CA_h_v  - epsilon_h*I_h_v                                                        + alpha_I*I_c_v - delta_I*I_h_v
     # First recurrence
-    dS_II_h_v <-  p_h*epsilon_h*I_h_v     - lambda_h*S_II_h_v  + gamma_h*C_II_h_v  - phi_h*S_II_h_v                              + alpha*S_II_c_v - delta*S_II_h_v
-    dC_II_h_v <- (1-p_h)*epsilon_h*I_h_v  + lambda_h*S_II_h_v  - gamma_h*C_II_h_v  - k_II*sigma_h*C_II_h_v                       + alpha*C_II_c_v - delta*C_II_h_v
-    dI_II_h_v <-  k_II*sigma_h*C_II_h_v   - epsilon_h*I_II_h_v                                                                   + alpha_II*I_II_c_v - delta_II*I_II_h_v
+    dS_II_h_v <-  p_h*epsilon_h*I_h_v     - lambda_h*S_II_h_v  + gamma_h*C_II_h_v  - phi_h*S_II_h_v                                + alpha*S_II_c_v - delta*S_II_h_v
+    dC_II_h_v <- (1-p_h)*epsilon_h*I_h_v  + lambda_h*S_II_h_v  - gamma_h*C_II_h_v  - k_II*sigma_h_v*C_II_h_v                       + alpha*C_II_c_v - delta*C_II_h_v
+    dI_II_h_v <-  k_II*sigma_h_v*C_II_h_v   - epsilon_h*I_II_h_v                                                                   + alpha_II*I_II_c_v - delta_II*I_II_h_v
     # Second+ recurrence
-    dS_III_h_v <-  p_h*epsilon_h*(I_II_h_v + I_III_h_v)    - lambda_h*S_III_h_v  + gamma_h*C_III_h_v  - phi_h*S_III_h_v          + alpha*S_III_c_v - delta*S_III_h_v
-    dC_III_h_v <- (1-p_h)*epsilon_h*(I_II_h_v + I_III_h_v) + lambda_h*S_III_h_v  - gamma_h*C_III_h_v  - k_III*sigma_h*C_III_h_v  + alpha*C_III_c_v - delta*C_III_h_v
-    dI_III_h_v <-  k_III*sigma_h*C_III_h_v  - epsilon_h*I_III_h_v                                                                + alpha_III*I_III_c_v - delta_III*I_III_h_v
+    dS_III_h_v <-  p_h*epsilon_h*(I_II_h_v + I_III_h_v)    - lambda_h*S_III_h_v  + gamma_h*C_III_h_v  - phi_h*S_III_h_v            + alpha*S_III_c_v - delta*S_III_h_v
+    dC_III_h_v <- (1-p_h)*epsilon_h*(I_II_h_v + I_III_h_v) + lambda_h*S_III_h_v  - gamma_h*C_III_h_v  - k_III*sigma_h_v*C_III_h_v  + alpha*C_III_c_v - delta*C_III_h_v
+    dI_III_h_v <-  k_III*sigma_h_v*C_III_h_v  - epsilon_h*I_III_h_v                                                                + alpha_III*I_III_c_v - delta_III*I_III_h_v
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_h_v <- sigma_h_v*C0_h_v + k_A*sigma_h_v*CA_h_v + k_II*sigma_h_v*C_II_h_v + k_III*sigma_h_v*C_III_h_v
+    dprimo_CumI_h_v <- sigma_h_v*C0_h_v + k_A*sigma_h_v*CA_h_v 
+    drec_CumI_h_v <- k_II*sigma_h_v*C_II_h_v + k_III*sigma_h_v*C_III_h_v
     
     # ---- COMMUNITY / VACCINATED ----
     # Primary compartments
-    dS0_c_v <- -lambda_c*S0_c_v  + gamma_c*C0_c_v  - tau_c*S0_c_v  + omega_c*SA_c_v  + phi_c*(S_II_c_v + S_III_c_v)              - alpha*S0_c_v + delta*S0_h_v
-    dSA_c_v <- -lambda_c*SA_c_v  + gamma_c*CA_c_v  + tau_c*S0_c_v  - omega_c*SA_c_v                                              - alpha*SA_c_v + delta*SA_h_v
-    dC0_c_v <-  lambda_c*S0_c_v  - gamma_c*C0_c_v  - tau_c*C0_c_v  + omega_c*CA_c_v  - sigma_c*C0_c_v                            - alpha*C0_c_v + delta*C0_h_v
-    dCA_c_v <-  lambda_c*SA_c_v  - gamma_c*CA_c_v  + tau_c*C0_c_v  - omega_c*CA_c_v  - k_A*sigma_c*CA_c_v                        - alpha*CA_c_v + delta*CA_h_v
-    dI_c_v  <-  sigma_c*C0_c_v  + k_A*sigma_c*CA_c_v - epsilon_c*I_c_v                                                           - alpha_I*I_c_v
+    dS0_c_v <- -lambda_c*S0_c_v  + gamma_c*C0_c_v  - tau_c_red*S0_c_v  + omega_c*SA_c_v  + phi_c*(S_II_c_v + S_III_c_v)            - alpha*S0_c_v + delta*S0_h_v
+    dSA_c_v <- -lambda_c*SA_c_v  + gamma_c*CA_c_v  + tau_c_red*S0_c_v  - omega_c*SA_c_v                                            - alpha*SA_c_v + delta*SA_h_v
+    dC0_c_v <-  lambda_c*S0_c_v  - gamma_c*C0_c_v  - tau_c_red*C0_c_v  + omega_c*CA_c_v  - sigma_c_v*C0_c_v                        - alpha*C0_c_v + delta*C0_h_v
+    dCA_c_v <-  lambda_c*SA_c_v  - gamma_c*CA_c_v  + tau_c_red*C0_c_v  - omega_c*CA_c_v  - k_A*sigma_c_v*CA_c_v                    - alpha*CA_c_v + delta*CA_h_v
+    dI_c_v  <-  sigma_c_v*C0_c_v  + k_A*sigma_c_v*CA_c_v - epsilon_c*I_c_v                                                         - alpha_I*I_c_v
     # First recurrence
-    dS_II_c_v <-  p_c*epsilon_c*I_c_v     - lambda_c*S_II_c_v  + gamma_c*C_II_c_v  - phi_c*S_II_c_v                              - alpha*S_II_c_v + delta*S_II_h_v + prop*delta_I*I_h_v
-    dC_II_c_v <- (1-p_c)*epsilon_c*I_c_v  + lambda_c*S_II_c_v  - gamma_c*C_II_c_v  - k_II*sigma_c*C_II_c_v                       - alpha*C_II_c_v + delta*C_II_h_v + (1 - prop)*delta_I*I_h_v
-    dI_II_c_v <-  k_II*sigma_c*C_II_c_v   - epsilon_c*I_II_c_v                                                                   - alpha_II*I_II_c_v
+    dS_II_c_v <-  p_c*epsilon_c*I_c_v     - lambda_c*S_II_c_v  + gamma_c*C_II_c_v  - phi_c*S_II_c_v                                - alpha*S_II_c_v + delta*S_II_h_v + prop*delta_I*I_h_v
+    dC_II_c_v <- (1-p_c)*epsilon_c*I_c_v  + lambda_c*S_II_c_v  - gamma_c*C_II_c_v  - k_II*sigma_c_v*C_II_c_v                       - alpha*C_II_c_v + delta*C_II_h_v + (1 - prop)*delta_I*I_h_v
+    dI_II_c_v <-  k_II*sigma_c_v*C_II_c_v   - epsilon_c*I_II_c_v                                                                   - alpha_II*I_II_c_v
     # Second+ recurrence
-    dS_III_c_v <-  p_c*epsilon_c*(I_II_c_v + I_III_c_v)    - lambda_c*S_III_c_v  + gamma_c*C_III_c_v  - phi_c*S_III_c_v          - alpha*S_III_c_v + delta*S_III_h_v + prop*(delta_II*I_II_h_v + delta_III*I_III_h_v)
-    dC_III_c_v <- (1-p_c)*epsilon_c*(I_II_c_v + I_III_c_v) + lambda_c*S_III_c_v  - gamma_c*C_III_c_v  - k_III*sigma_c*C_III_c_v  - alpha*C_III_c_v + delta*C_III_h_v + (1-prop)*(delta_II*I_II_h_v + delta_III*I_III_h_v)
-    dI_III_c_v <-  k_III*sigma_c*C_III_c_v  - epsilon_c*I_III_c_v                                                                - alpha_III*I_III_c_v
+    dS_III_c_v <-  p_c*epsilon_c*(I_II_c_v + I_III_c_v)    - lambda_c*S_III_c_v  + gamma_c*C_III_c_v  - phi_c*S_III_c_v            - alpha*S_III_c_v + delta*S_III_h_v + prop*(delta_II*I_II_h_v + delta_III*I_III_h_v)
+    dC_III_c_v <- (1-p_c)*epsilon_c*(I_II_c_v + I_III_c_v) + lambda_c*S_III_c_v  - gamma_c*C_III_c_v  - k_III*sigma_c_v*C_III_c_v  - alpha*C_III_c_v + delta*C_III_h_v + (1-prop)*(delta_II*I_II_h_v + delta_III*I_III_h_v)
+    dI_III_c_v <-  k_III*sigma_c_v*C_III_c_v  - epsilon_c*I_III_c_v                                                                - alpha_III*I_III_c_v
+    # "Fake compartments" = cumulative incidence counters
+    dCumI_c_v <- sigma_c_v*C0_c_v + k_A*sigma_c_v*CA_c_v + k_II*sigma_c_v*C_II_c_v + k_III*sigma_c_v*C_III_c_v
+    dprimo_CumI_c_v <- sigma_c_v*C0_c_v + k_A*sigma_c_v*CA_c_v 
+    drec_CumI_c_v <- k_II*sigma_c_v*C_II_c_v + k_III*sigma_c_v*C_III_c_v
     
     return(list(
       c(
         dS0_h_nv, dSA_h_nv, dC0_h_nv, dCA_h_nv, dI_h_nv,
         dS_II_h_nv, dC_II_h_nv, dI_II_h_nv,
         dS_III_h_nv, dC_III_h_nv, dI_III_h_nv,
+        dCumI_h_nv, dprimo_CumI_h_nv, drec_CumI_h_nv,
         
         dS0_c_nv, dSA_c_nv, dC0_c_nv, dCA_c_nv, dI_c_nv,
         dS_II_c_nv, dC_II_c_nv, dI_II_c_nv,
         dS_III_c_nv, dC_III_c_nv, dI_III_c_nv,
+        dCumI_c_nv, dprimo_CumI_c_nv, drec_CumI_c_nv,
         
         dS0_h_v, dSA_h_v, dC0_h_v, dCA_h_v, dI_h_v,
         dS_II_h_v, dC_II_h_v, dI_II_h_v,
         dS_III_h_v, dC_III_h_v, dI_III_h_v,
+        dCumI_h_v, dprimo_CumI_h_v, drec_CumI_h_v,
         
         dS0_c_v, dSA_c_v, dC0_c_v, dCA_c_v, dI_c_v,
         dS_II_c_v, dC_II_c_v, dI_II_c_v,
-        dS_III_c_v, dC_III_c_v, dI_III_c_v)
-    ))
+        dS_III_c_v, dC_III_c_v, dI_III_c_v,
+        dCumI_c_v, dprimo_CumI_c_v, drec_CumI_c_v)))
   })
 }
+
+
 
 
 
