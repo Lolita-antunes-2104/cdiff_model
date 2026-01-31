@@ -43,7 +43,6 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     out_hc <- delta * (tot_h$S + tot_h$C) + delta_I * I_h + delta_II * I_II_h + delta_III * I_III_h
     den_alpha <- w * (tot_c$S + tot_c$C) + w_I * I_c + w_II * I_II_c + w_III * I_III_c
     alpha <- if (is.na(den_alpha) || den_alpha <= 0) 0 else out_hc / den_alpha
-    
     # admissions rates by infection state
     alpha_I   <- alpha * w_I
     alpha_II  <- alpha * w_II
@@ -131,6 +130,10 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     lambda_c <- compute_lambda(beta_c, C_c, I_tot_c, N_c, nu_c)
     
     # ---- Fixed alpha (hospital admissions) ----
+    alpha <- alpha_fixed
+    alpha_I   <- alpha * w_I
+    alpha_II  <- alpha * w_II
+    alpha_III <- alpha * w_III
     
     # ---- Vaccinated et ATB parameters ----
     sigma_h_v <- sigma_h * sigma_mult_v
