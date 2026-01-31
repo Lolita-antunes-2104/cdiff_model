@@ -6,7 +6,8 @@
 #  1. MODEL FUNCTIONS
 ###############################################################################
 
-# FOR CALIBRATION MODEL 
+# ################### FOR CALIBRATION MODEL ################### 
+
 # Create initial conditions for calibration model
 create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01, prev_rec = 0.005) {
   # Safety check to not exceed 100%
@@ -61,25 +62,6 @@ create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01
 # Check if model has reached equilibrium by evalutating the derivative
 
 
-# Faire fonction pour R0
-
-# FOR SCENARIO MODEL 
-# Create initial conditions from a calibrated equilibrium state for intervention scenarios
-
-##......
-  
-  # Add cumulative incidence counters (must match the ODE state names)
-  #cum_names <- c("CumI_primo_h_nv","CumI_rec_h_nv","CumI_h_nv",
-#                  "CumI_primo_c_nv","CumI_rec_c_nv","CumI_c_nv",
-#                  "CumI_primo_h_v","CumI_rec_h_v","CumI_h_v",
-#                  "CumI_primo_c_v","CumI_rec_c_v","CumI_c_v")
-#   init[cum_names] <- 0
-#   
-#   return(init)
-# }
-
-
-
 
 
 
@@ -88,20 +70,23 @@ create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01
 ###############################################################################
 
 # FOR CALIBRATION MODEL 
-# Compute colonised
 
-# and prevalence
+# prevalence
+# prendre le C de compute metrics et faire C_h /N_h et C_c / N_c
 
 # Compute instantaneous CDI incidence (primary, recurrent, or total)
+# prendre 
 
-# and normalised (absolue / relative)
+# and normalised (absolue (/N_tot) / relative (_N_h or N_c))
 
 # Compute cumulative CDI incidence from CumI_* compartments (primary, recurrent or total)
 
-# and normalised (absolue / relative)
+# and normalised(absolue (/N_tot) / relative (_N_h ou N_c))
 
 # Compute recurrence prevalence from infected compartments
 # rec_1 = I_II / I , rec_2 = I_III / I_II
+
+# Faire fonction pour R0
 
 # FOR SCENARIO MODEL
 
