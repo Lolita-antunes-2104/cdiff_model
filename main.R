@@ -13,10 +13,11 @@ rm(list = ls())
 source("0_package.R")
 source("1_model.R")
 source("2_function.R")
+source("3_calibration.R")
 source("5_plot.R")
 
 ###############################################################################
-# 0. PARAMETRES & POPULATIONS
+# 1. PARAMETRES, POPULATIONS and TARGETS 
 ###############################################################################
 
 # ---- Population sizes ----
@@ -80,10 +81,25 @@ params <- c(
   prop    = prop
 )
 
+###############################################################################
+# 2. INITIAL CONDITIONS & TIME FOR CALIBRATION
+###############################################################################
+
+# Initial conditions for the calibration model (hospital + community, primary + recurrences)
+init_cond <- create_initial_conditions_precalibration(
+  N_h = N_h,
+  N_c = N_c,
+  prev_primo = 0.01,   # initial primary colonization/infection "seed" (choose small)
+  prev_rec   = 0.005   # initial recurrence "seed" (choose small)
+)
+
+# Time grid (days): long horizon so the model has time to reach equilibrium
+time_vec <- seq(0, 10000, by = 1)
+
 # ---- Target metrics from literature ----
-targets <- list(
-  portage_h   = 0.07,
-  portage_c   = 0.015,
+target_metrics <- list(
+  prevalence_h   = 0.07,
+  prevalence_c   = 0.015,
   incidence_h = 12 / 100000 / 365, # unités
   incidence_c = 18 / 100000 / 365, # unités
   recid_1     = 0.25,
@@ -91,102 +107,150 @@ targets <- list(
 )
 
 ###############################################################################
-# 1. Faire tourner modèle jusqu'à l'équilibre
+# 3. GRID SEARCH (1 -> beta, 2 -> sigma, 3 -> k)
 ###############################################################################
 
-# Conditions initiales (pre-calibration)
-# attention les conditions initiales doivent 
-y0 <- create_initial_conditions_precalibration(N_h, N_c, prev_primo = 0.01, prev_rec = 0.005)
+# ---- Grid 1: beta_h, beta_c (match carriage prevalence) ----
+beta_grid <- grid_search(
+  param_names = c("beta_h", "beta_c"),
+  param_ranges = list(
+    beta_h = c(0.01, 0.15, 30),   # from, to, number of points
+    beta_c = c(0.001, 0.08, 30)
+  ),
+  metric_function = compute_metrics_beta,
+  target_metrics  = list(prevalence_h = target_metrics$prevalence_h,
+                         prevalence_c = target_metrics$prevalence_c),
+  params_base = params,
+  init_cond   = init_cond,
+  time_vec    = time_vec,
+  n_cores     = 4
+)
 
-# Grille de temps pour le burn-in
-t_burnin <- seq(0, 10000, by = 1)
+best_beta <- beta_grid$best_guess[, c("beta_h", "beta_c")]
+params[c("beta_h", "beta_c")] <- as.numeric(best_beta)
 
-# Résolution ODE
-sol_burnin <- lsoda(y = y0,
-                    times = t_burnin,
-                    func  = cdiff_model_for_calibration,
-                    parms = params)
+# ---- Grid 2: sigma_h, sigma_c (match incidence per N_tot) ----
+sigma_grid <- grid_search(
+  param_names = c("sigma_h", "sigma_c"),
+  param_ranges = list(
+    sigma_h = c(0.0005, 0.01, 30),
+    sigma_c = c(0.0002, 0.005, 30)
+  ),
+  metric_function = compute_metrics_sigma,
+  target_metrics  = list(incidence_h = target_metrics$incidence_h,
+                         incidence_c = target_metrics$incidence_c),
+  params_base = params,     # params already contains best beta from Grid 1
+  init_cond   = init_cond,
+  time_vec    = time_vec,
+  n_cores     = 4
+)
 
-# Extraire l'état final comme named vector
-pop_eq <- setNames(sol_burnin[nrow(sol_burnin), -1], names(y0))
+best_sigma <- sigma_grid$best_guess[, c("sigma_h", "sigma_c")]
+params[c("sigma_h", "sigma_c")] <- as.numeric(best_sigma)
 
-# Vérifier l'équilibre au dernier timestep
-res_eq <- check_equilibrium(pop_eq, params, cdiff_model_for_calibration, threshold = 1e-6)
+# ---- Grid 3: k_II, k_III (match recurrence prevalence) ----
+k_grid <- grid_search(
+  param_names = c("k_II", "k_III"),
+  param_ranges = list(
+    k_II  = c(1, 4, 25),
+    k_III = c(1, 6, 25)
+  ),
+  metric_function = compute_metrics_k,
+  target_metrics  = list(recid_1 = target_metrics$recid_1,
+                         recid_2 = target_metrics$recid_2),
+  params_base = params,     # params already contains best beta + best sigma
+  init_cond   = init_cond,
+  time_vec    = time_vec,
+  n_cores     = 4
+)
 
-if (!res_eq$at_equilibrium) {
-  cat("Pas d'équilibre sur la fenêtre du burn-in\n")
-  cat("Compartiment le plus loin :", res_eq$worst_comp, " |dX/dt| =", res_eq$max_deriv, "\n")
-  print(head(res_eq$details, 5))
-} else {
-  # Chercher le premier timestep où l'équilibre est atteint (binary search)
-  lo <- 1; hi <- nrow(sol_burnin)
-  while (lo < hi) {
-    mid <- (lo + hi) %/% 2
-    pop_mid <- setNames(sol_burnin[mid, -1], names(y0))
-    if (check_equilibrium(pop_mid, params, cdiff_model_for_calibration, threshold = 1e-6)$at_equilibrium) {
-      hi <- mid
-    } else {
-      lo <- mid + 1
-    }
-  }
-  t_eq <- sol_burnin[lo, 1]
-  cat("Équilibre atteint à t =", t_eq, "jours (max |dX/dt| =", res_eq$max_deriv, ")\n")
-}
+best_k <- k_grid$best_guess[, c("k_II", "k_III")]
+params[c("k_II", "k_III")] <- as.numeric(best_k)
 
-# Plot de la dynamique 
-plots <- plot_dynamics(sol_dyn_df, targets, N_h, N_c)
+###############################################################################
+# 4. CALIBRATION (MULTI-START OPTIMIZATION)
+###############################################################################
 
+# Settings for multi-start Nelder-Mead
+n_starts <- 10
+n_cores  <- 4
+maxit    <- 500
 
+# Run calibration (optimizes beta_h, beta_c, sigma_h, sigma_c, k_II, k_III)
+calib_res <- run_calibration(
+  initial_params = params,         # start near the grid-search best values
+  target_metrics = target_metrics, # prevalence_h/c, incidence_h/c, recid_1/2
+  params_base    = params,         # baseline parameter vector (will be overwritten for the 6 calibrated params)
+  init_cond      = init_cond,
+  time_vec       = time_vec,
+  n_starts       = n_starts,
+  n_cores        = n_cores,
+  maxit          = maxit
+)
 
+# Build the final calibrated parameter vector
+params_calib <- params
+params_calib[names(calib_res$best$par)] <- calib_res$best$par
 
+# Simulate once with calibrated parameters and compute metrics
+out_calib <- run_calib_model_to_equilibrium(params_calib, init_cond, time_vec)
+metrics_calib <- compute_metrics_calib(out_calib, params_calib)
 
-
-
-
-
+# Quick check: print last values vs targets
+# cat("\n--- CALIBRATION CHECK (last time point) ---\n")
+# cat("prevalence_h:", tail(metrics_calib$carriage$prev_h, 1), " target:", target_metrics$prevalence_h, "\n")
+# cat("prevalence_c:", tail(metrics_calib$carriage$prev_c, 1), " target:", target_metrics$prevalence_c, "\n")
+# cat("incidence_h :", tail(metrics_calib$incidence_instant$inc_h_total_abs, 1), " target:", target_metrics$incidence_h, "\n")
+# cat("incidence_c :", tail(metrics_calib$incidence_instant$inc_c_total_abs, 1), " target:", target_metrics$incidence_c, "\n")
+# cat("recid_1     :", tail(metrics_calib$recurrence$rec1, 1), " target:", target_metrics$recid_1, "\n")
+# cat("recid_2     :", tail(metrics_calib$recurrence$rec2, 1), " target:", target_metrics$recid_2, "\n")
 
 
 
 
 
 ###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
-###############################################################################
-###############################################################################
-# 4. TABLEAU RÉSUMÉ : DÉBUT vs FIN DE LA DYNAMIQUE
+# 5. RUN UNTIL EQUILIBRIUM WITH CALIBRATED PARAMETERS and INITIAL CONDITIONS
 ###############################################################################
 
-plots <- plot_dynamics(sol_dyn_df, targets, N_h, N_c)
+# Run the calibration model with the final calibrated parameters (stop early if equilibrium)
+out_eq <- run_calib_model_to_equilibrium(
+  params   = params_calib,   # calibrated parameters
+  init_cond = init_cond,     # initial conditions
+  time_vec = time_vec        # long horizon, but will stop early if equilibrium reached
+)
 
-# Afficher les 4 plots (2x2)
-gridExtra::grid.arrange(plots$hospital_all,
-                        plots$hospital_agg,
-                        plots$community_all,
-                        plots$community_agg,
-                        nrow = 2, ncol = 2)
+# Get the last state (equilibrium state) as a named numeric vector
+state_eq <- get_last_state(out_eq)
+
+# Dynamics plots (hospital + community side by side)
+dyn_plots <- plot_dynamics(
+  ode_result = out_eq,
+  targets = list(prevalence_h = target_metrics$prevalence_h, prevalence_c = target_metrics$prevalence_c),
+  N_h = N_h,
+  N_c = N_c)
+
+print(dyn_plots$both)  # side-by-side plot
+
+# Alpha plot
+p_alpha <- plot_alpha_dynamics(out_eq, params_calib)
+print(p_alpha)
 
 
-# faire un tableau plot dans lequel il y a le nombre de gens dans tous les compartiments
 
-# main 
 
-# Create initial conditions from a calibrated equilibrium state for intervention scenarios
-# prendre les dernières valeurs de la résolution de l'équation lsoa
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
