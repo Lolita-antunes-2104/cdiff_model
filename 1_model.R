@@ -3,25 +3,7 @@
 ###############################################################################
 
 ###############################################################################
-# 1. HELPERS FUNCTIONS
-###############################################################################
-
-# Compute total population counts for a given setting
-compute_totals <- function(S0, C0, SA, CA, I, S_II, C_II, I_II, S_III, C_III, I_III) {
-  return(list(S = S0 + SA + S_II + S_III,
-              C = C0 + CA + C_II + C_III,
-              I_tot = I + I_II + I_III,
-              N = S0 + SA + S_II + S_III + C0 + CA + C_II + C_III + I + I_II + I_III))
-}
-
-# Compute force of infection (transmission rate)
-compute_lambda <- function(beta, C, I_tot, N, nu) {
-  if (N == 0) return(0)
-  return(beta * (C + nu * I_tot) / N)
-}
-
-###############################################################################
-# 2. STRATIFIED MODEL HOSPITAL/COMMUNITY FOR CALIBRATION
+# 1. STRATIFIED MODEL HOSPITAL/COMMUNITY FOR CALIBRATION
 ###############################################################################
 
 # This function defines the system of ODEs to be solved by lsoda() 
@@ -101,8 +83,11 @@ cdiff_model_for_calibration <- function(t, pop, params) {
   })
 }
 
+
+
+
 ###############################################################################
-# 3. STRATIFIED MODEL HOSPITAL/COMMUNITY FO VACCINATION/ATB SCENARIO
+# 2. STRATIFIED MODEL HOSPITAL/COMMUNITY FO VACCINATION/ATB SCENARIO
 ###############################################################################
 
 cdiff_model_for_scenario <- function(t, pop, params) {
