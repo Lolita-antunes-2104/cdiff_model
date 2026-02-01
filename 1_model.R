@@ -24,7 +24,7 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     # ---- Dynamic alpha (hospital admissions) ----
     out_hc <- delta * (tot_h$S + tot_h$C) + delta_I * I_h + delta_II * I_II_h + delta_III * I_III_h
     den_alpha <- w * (tot_c$S + tot_c$C) + w_I * I_c + w_II * I_II_c + w_III * I_III_c
-    alpha <- out_hc / den_alpha
+    alpha <- if (den_alpha == 0) 0 else out_hc / den_alpha
     # admissions rates by infection state
     alpha_I   <- alpha * w_I
     alpha_II  <- alpha * w_II

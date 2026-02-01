@@ -129,6 +129,10 @@ beta_grid <- grid_search(
 best_beta <- beta_grid$best_guess[, c("beta_h", "beta_c")]
 params[c("beta_h", "beta_c")] <- as.numeric(best_beta)
 
+p_beta <- plot_grid_search_beta(beta_grid,  target_metrics)
+print(p_beta)
+
+
 # ---- Grid 2: sigma_h, sigma_c (match incidence per N_tot) ----
 sigma_grid <- grid_search(
   param_names = c("sigma_h", "sigma_c"),
@@ -148,6 +152,10 @@ sigma_grid <- grid_search(
 best_sigma <- sigma_grid$best_guess[, c("sigma_h", "sigma_c")]
 params[c("sigma_h", "sigma_c")] <- as.numeric(best_sigma)
 
+p_sigma <- plot_grid_search_sigma(sigma_grid, target_metrics)
+print(p_sigma)
+
+
 # ---- Grid 3: k_II, k_III (match recurrence prevalence) ----
 k_grid <- grid_search(
   param_names = c("k_II", "k_III"),
@@ -166,6 +174,10 @@ k_grid <- grid_search(
 
 best_k <- k_grid$best_guess[, c("k_II", "k_III")]
 params[c("k_II", "k_III")] <- as.numeric(best_k)
+
+p_k <- plot_grid_search_k(k_grid, target_metrics)
+print(p_k)
+
 
 ###############################################################################
 # 4. CALIBRATION (MULTI-START OPTIMIZATION)
