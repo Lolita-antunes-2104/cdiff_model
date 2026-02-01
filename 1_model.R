@@ -45,10 +45,6 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     dS_III_h <-  p_h*epsilon_h*(I_II_h + I_III_h)     - lambda_h*S_III_h  + gamma_h*C_III_h  - phi_h*S_III_h          + alpha*S_III_c - delta*S_III_h
     dC_III_h <- (1-p_h)*epsilon_h*(I_II_h + I_III_h)  + lambda_h*S_III_h  - gamma_h*C_III_h  - k_III*sigma_h*C_III_h  + alpha*C_III_c - delta*C_III_h
     dI_III_h <-  k_III*sigma_h*C_III_h  - epsilon_h*I_III_h                                                           + alpha_III*I_III_c - delta_III*I_III_h
-    # "Fake compartments" = cumulative incidence counters
-    dCumI_h <- sigma_h*C0_h + k_A*sigma_h*CA_h + k_II*sigma_h*C_II_h + k_III*sigma_h*C_III_h
-    dprimo_CumI_h <- sigma_h*C0_h + k_A*sigma_h*CA_h 
-    drec_CumI_h <- k_II*sigma_h*C_II_h + k_III*sigma_h*C_III_h
 
     #  ---- ODE COMMUNITY ----
     # Primary 
@@ -65,23 +61,18 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     dS_III_c <-  p_c*epsilon_c*(I_II_c + I_III_c)     - lambda_c*S_III_c  + gamma_c*C_III_c  - phi_c*S_III_c          - alpha*S_III_c + delta*S_III_h + prop*(delta_II*I_II_h + delta_III*I_III_h)
     dC_III_c <- (1-p_c)*epsilon_c*(I_II_c + I_III_c)  + lambda_c*S_III_c  - gamma_c*C_III_c  - k_III*sigma_c*C_III_c  - alpha*C_III_c + delta*C_III_h + (1-prop)*(delta_II*I_II_h + delta_III*I_III_h)
     dI_III_c <-  k_III*sigma_c*C_III_c  - epsilon_c*I_III_c                                                           - alpha_III*I_III_c
-    # "Fake compartments" = cumulative incidence counters
-    dCumI_c <- sigma_c*C0_c + k_A*sigma_c*CA_c + k_II*sigma_c*C_II_c + k_III*sigma_c*C_III_c
-    dprimo_CumI_c <- sigma_c*C0_c + k_A*sigma_c*CA_c 
-    drec_CumI_c <- k_II*sigma_c*C_II_c + k_III*sigma_c*C_III_c
-    
+
     return(list(
       c(dS0_h, dSA_h, dC0_h, dCA_h, dI_h,
         dS_II_h, dC_II_h, dI_II_h,
         dS_III_h, dC_III_h, dI_III_h,
-        dCumI_h, dprimo_CumI_h, drec_CumI_h,
         
         dS0_c, dSA_c, dC0_c, dCA_c, dI_c,
         dS_II_c, dC_II_c, dI_II_c,
-        dS_III_c, dC_III_c, dI_III_c,
-        dCumI_c, dprimo_CumI_c, drec_CumI_c)))
+        dS_III_c, dC_III_c, dI_III_c)))
   })
 }
+
 
 
 
@@ -127,12 +118,12 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     tau_h_red <- tau_h * tau_mult_red
     tau_c_red <- tau_c * tau_mult_red
     
-    # ---- ODE HOSPITAL / NON VACCINATED and NON ATB REDUCTION ----
+    # ---- ODE HOSPITAL / NON VACCINATED and ATB REDUCTION ----
     # Primary
-    dS0_h_nv <- -lambda_h*S0_h_nv  + gamma_h*C0_h_nv  - tau_h*S0_h_nv  + omega_h*SA_h_nv  + phi_h*(S_II_h_nv + S_III_h_nv)             + alpha*S0_c_nv - delta*S0_h_nv
-    dSA_h_nv <- -lambda_h*SA_h_nv  + gamma_h*CA_h_nv  + tau_h*S0_h_nv  - omega_h*SA_h_nv                                               + alpha*SA_c_nv - delta*SA_h_nv
-    dC0_h_nv <-  lambda_h*S0_h_nv  - gamma_h*C0_h_nv  - tau_h*C0_h_nv  + omega_h*CA_h_nv  - sigma_h*C0_h_nv                            + alpha*C0_c_nv - delta*C0_h_nv
-    dCA_h_nv <-  lambda_h*SA_h_nv  - gamma_h*CA_h_nv  + tau_h*C0_h_nv  - omega_h*CA_h_nv  - k_A*sigma_h*CA_h_nv                        + alpha*CA_c_nv - delta*CA_h_nv
+    dS0_h_nv <- -lambda_h*S0_h_nv  + gamma_h*C0_h_nv  - tau_h_red*S0_h_nv  + omega_h*SA_h_nv  + phi_h*(S_II_h_nv + S_III_h_nv)             + alpha*S0_c_nv - delta*S0_h_nv
+    dSA_h_nv <- -lambda_h*SA_h_nv  + gamma_h*CA_h_nv  + tau_h_red*S0_h_nv  - omega_h*SA_h_nv                                               + alpha*SA_c_nv - delta*SA_h_nv
+    dC0_h_nv <-  lambda_h*S0_h_nv  - gamma_h*C0_h_nv  - tau_h_red*C0_h_nv  + omega_h*CA_h_nv  - sigma_h*C0_h_nv                            + alpha*C0_c_nv - delta*C0_h_nv
+    dCA_h_nv <-  lambda_h*SA_h_nv  - gamma_h*CA_h_nv  + tau_h_red*C0_h_nv  - omega_h*CA_h_nv  - k_A*sigma_h*CA_h_nv                        + alpha*CA_c_nv - delta*CA_h_nv
     dI_h_nv  <-  sigma_h*C0_h_nv  + k_A*sigma_h*CA_h_nv  - epsilon_h*I_h_nv                                                            + alpha_I*I_c_nv - delta_I*I_h_nv
     # First recurrence
     dS_II_h_nv <-  p_h*epsilon_h*I_h_nv     - lambda_h*S_II_h_nv  + gamma_h*C_II_h_nv  - phi_h*S_II_h_nv                               + alpha*S_II_c_nv - delta*S_II_h_nv
@@ -147,12 +138,12 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dprimo_CumI_h_nv <- sigma_h*C0_h_nv + k_A*sigma_h*CA_h_nv 
     drec_CumI_h_nv <- k_II*sigma_h*C_II_h_nv + k_III*sigma_h*C_III_h_nv
 
-    # ---- ODE COMMUNITY / NON VACCINATED and NON ATB REDUCTION ----
+    # ---- ODE COMMUNITY / NON VACCINATED and ATB REDUCTION ----
     # Primary
-    dS0_c_nv <- -lambda_c*S0_c_nv  + gamma_c*C0_c_nv  - tau_c*S0_c_nv  + omega_c*SA_c_nv  + phi_c*(S_II_c_nv + S_III_c_nv)             - alpha*S0_c_nv + delta*S0_h_nv
-    dSA_c_nv <- -lambda_c*SA_c_nv  + gamma_c*CA_c_nv  + tau_c*S0_c_nv  - omega_c*SA_c_nv                                               - alpha*SA_c_nv + delta*SA_h_nv
-    dC0_c_nv <-  lambda_c*S0_c_nv  - gamma_c*C0_c_nv  - tau_c*C0_c_nv  + omega_c*CA_c_nv  - sigma_c*C0_c_nv                            - alpha*C0_c_nv + delta*C0_h_nv
-    dCA_c_nv <-  lambda_c*SA_c_nv  - gamma_c*CA_c_nv  + tau_c*C0_c_nv  - omega_c*CA_c_nv  - k_A*sigma_c*CA_c_nv                        - alpha*CA_c_nv + delta*CA_h_nv
+    dS0_c_nv <- -lambda_c*S0_c_nv  + gamma_c*C0_c_nv  - tau_c_red*S0_c_nv  + omega_c*SA_c_nv  + phi_c*(S_II_c_nv + S_III_c_nv)             - alpha*S0_c_nv + delta*S0_h_nv
+    dSA_c_nv <- -lambda_c*SA_c_nv  + gamma_c*CA_c_nv  + tau_c_red*S0_c_nv  - omega_c*SA_c_nv                                               - alpha*SA_c_nv + delta*SA_h_nv
+    dC0_c_nv <-  lambda_c*S0_c_nv  - gamma_c*C0_c_nv  - tau_c_red*C0_c_nv  + omega_c*CA_c_nv  - sigma_c*C0_c_nv                            - alpha*C0_c_nv + delta*C0_h_nv
+    dCA_c_nv <-  lambda_c*SA_c_nv  - gamma_c*CA_c_nv  + tau_c_red*C0_c_nv  - omega_c*CA_c_nv  - k_A*sigma_c*CA_c_nv                        - alpha*CA_c_nv + delta*CA_h_nv
     dI_c_nv  <-  sigma_c*C0_c_nv  + k_A*sigma_c*CA_c_nv - epsilon_c*I_c_nv                                                             - alpha_I*I_c_nv
     # First recurrence
     dS_II_c_nv <-  p_c*epsilon_c*I_c_nv     - lambda_c*S_II_c_nv  + gamma_c*C_II_c_nv  - phi_c*S_II_c_nv                               - alpha*S_II_c_nv + delta*S_II_h_nv + prop*delta_I*I_h_nv

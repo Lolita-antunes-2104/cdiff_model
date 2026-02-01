@@ -3,7 +3,7 @@
 ###############################################################################
 
 ###############################################################################
-#  1. MODEL FUNCTIONS FOR BOTH MODELS
+#  1. MODEL FUNCTIONS
 ###############################################################################
 
 # Compute total population counts for a given setting
@@ -20,15 +20,7 @@ compute_lambda <- function(beta, C, I_tot, N, nu) {
   return(beta * (C + nu * I_tot) / N)
 }
 
-
-
-
-
-###############################################################################
-#  2. MODEL FUNCTIONS FOR CALIBRATION MODEL
-###############################################################################
-
-# Create initial conditions for calibration model
+# Create initial conditions for CALIBRATION model
 create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01, prev_rec = 0.005) {
   # Safety check to not exceed 100%
   if (4*prev_primo + 6*prev_rec >= 1) {
@@ -57,13 +49,6 @@ create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01
   C_III_c <- prev_rec * N_c
   I_III_c <- prev_rec * N_c
   S0_c <- N_c - (C0_c + CA_c + C_II_c + C_III_c + I_c + I_II_c + I_III_c + S_II_c + S_III_c + SA_c)
-  # Cumulative incidence (reset)
-  CumI_h       <- 0
-  primo_CumI_h <- 0 
-  rec_CumI_h   <- 0
-  CumI_c       <- 0
-  primo_CumI_c <- 0 
-  rec_CumI_c   <- 0
   
   # Return state vector
   return(c(
@@ -71,14 +56,13 @@ create_initial_conditions_precalibration <- function(N_h, N_c, prev_primo = 0.01
     S0_h = S0_h, SA_h = SA_h, C0_h = C0_h, CA_h = CA_h, I_h = I_h,
     S_II_h = S_II_h, C_II_h = C_II_h, I_II_h = I_II_h,
     S_III_h = S_III_h, C_III_h = C_III_h, I_III_h = I_III_h,
-    CumI_h = CumI_h, primo_CumI_h = primo_CumI_h, rec_CumI_h = rec_CumI_h,
     # Community
     S0_c = S0_c, SA_c = SA_c, C0_c = C0_c, CA_c = CA_c, I_c = I_c,
     S_II_c = S_II_c, C_II_c = C_II_c, I_II_c = I_II_c,
-    S_III_c = S_III_c, C_III_c = C_III_c, I_III_c = I_III_c,
-    CumI_c = CumI_c, primo_CumI_c = primo_CumI_c, rec_CumI_c = rec_CumI_c))
+    S_III_c = S_III_c, C_III_c = C_III_c, I_III_c = I_III_c))
 }
 
+# Create initial conditions for vaccination model (add CumI = 0)
 
 
 
@@ -293,40 +277,12 @@ compute_metrics_calib <- function(out, params) {
     inc_c_primo_rel <- inc_c_primo / N_c
     inc_c_rec_rel   <- inc_c_rec / N_c
     
-    # ---- Cumulative incidence from CumI_* compartments ----
-    # Make cumulative start at 0 (difference from t=0)
-    cum_h_total <- last$CumI_h - out$CumI_h[1] # final value - initial value = cumul between the start and the end
-    cum_h_primo <- last$primo_CumI_h - out$primo_CumI_h[1]
-    cum_h_rec   <- last$rec_CumI_h - out$rec_CumI_h[1]
-    
-    cum_c_total <- last$CumI_c - out$CumI_c[1]
-    cum_c_primo <- last$primo_CumI_c - out$primo_CumI_c[1]
-    cum_c_rec   <- last$rec_CumI_c - out$rec_CumI_c[1]
-    
-    # Normalized cumulative incidence
-    cum_h_total_abs <- cum_h_total / N_tot
-    cum_h_primo_abs <- cum_h_primo / N_tot
-    cum_h_rec_abs   <- cum_h_rec / N_tot
-    
-    cum_c_total_abs <- cum_c_total / N_tot
-    cum_c_primo_abs <- cum_c_primo / N_tot
-    cum_c_rec_abs   <- cum_c_rec / N_tot
-    
-    cum_h_total_rel <- cum_h_total / N_h
-    cum_h_primo_rel <- cum_h_primo / N_h
-    cum_h_rec_rel   <- cum_h_rec / N_h
-    
-    cum_c_total_rel <- cum_c_total / N_c
-    cum_c_primo_rel <- cum_c_primo / N_c
-    cum_c_rec_rel   <- cum_c_rec / N_c
-    
     # ---- Recurrence prevalence ----
     I1 <- last$I_h + last$I_c                                       # I primary (h+c)
     I2 <- last$I_II_h + last$I_II_c                                 # I recurrence 1 (h+c)
     I3 <- last$I_III_h + last$I_III_c                               # I recurrence 2+ (h+c)
     rec1 <- ifelse(I1 == 0, 0, I2 / I1)                             # recid_1
     rec2 <- ifelse(I2 == 0, 0, I3 / I2)                             # recid_2
-    
     
     # ---- R0 (simple proxy time series) ----
     R0_df <- compute_R0(params, N_h0 = N_h, N_c0 = N_c)
@@ -342,17 +298,7 @@ compute_metrics_calib <- function(out, params) {
         inc_h_total_abs, inc_h_primo_abs, inc_h_rec_abs,
         inc_c_total_abs, inc_c_primo_abs, inc_c_rec_abs,
         inc_h_total_rel, inc_h_primo_rel, inc_h_rec_rel,
-        inc_c_total_rel, inc_c_primo_rel, inc_c_rec_rel
-      ),
-      
-      incidence_cumulative = data.frame(time = last$time,
-        cum_h_total, cum_h_primo, cum_h_rec,
-        cum_c_total, cum_c_primo, cum_c_rec,
-        cum_h_total_abs, cum_h_primo_abs, cum_h_rec_abs,
-        cum_c_total_abs, cum_c_primo_abs, cum_c_rec_abs,
-        cum_h_total_rel, cum_h_primo_rel, cum_h_rec_rel,
-        cum_c_total_rel, cum_c_primo_rel, cum_c_rec_rel
-      ),
+        inc_c_total_rel, inc_c_primo_rel, inc_c_rec_rel),
       
       recurrence = data.frame(time = last$time, rec1 = rec1, rec2 = rec2),
       
@@ -393,6 +339,8 @@ compute_metrics_scenario <- function(out, params) {
     N_h     <- N_h_nv + N_h_v
     N_c     <- N_c_nv + N_c_v
     N_tot   <- N_h + N_c
+    N_nv    <- N_h_nv + N_c_nv
+    N_v     <- N_h_v + N_c_v
     
     # ---- Carriage prevalence ----
     C_h <- final_tot_h_nv$C + final_tot_h_v$C
@@ -444,24 +392,26 @@ compute_metrics_scenario <- function(out, params) {
     inc_c_primo_rel <- inc_c_primo / N_c
     inc_c_rec_rel   <- inc_c_rec   / N_c
     
-    # ---- Cumulative incidence (from fake compartments) ----
-    # Non-vaccinated
-    cum_h_nv_total <- out$CumI_h_nv       - out$CumI_h_nv[1]
-    cum_h_nv_primo <- out$primo_CumI_h_nv - out$primo_CumI_h_nv[1]
-    cum_h_nv_rec   <- out$rec_CumI_h_nv   - out$rec_CumI_h_nv[1]
+    # ---- Cumulative incidence (from CumI compartments) ----
+    # Make cumulative start at 0 (difference from t=0)
     
-    cum_c_nv_total <- out$CumI_c_nv       - out$CumI_c_nv[1]
-    cum_c_nv_primo <- out$primo_CumI_c_nv - out$primo_CumI_c_nv[1]
-    cum_c_nv_rec   <- out$rec_CumI_c_nv   - out$rec_CumI_c_nv[1]
+    # Non-vaccinated
+    cum_h_nv_total <- last$CumI_h_nv       - out$CumI_h_nv[1] # final value - initial value = cumul between the start and the end
+    cum_h_nv_primo <- last$primo_CumI_h_nv - out$primo_CumI_h_nv[1]
+    cum_h_nv_rec   <- last$rec_CumI_h_nv   - out$rec_CumI_h_nv[1]
+    
+    cum_c_nv_total <- last$CumI_c_nv       - out$CumI_c_nv[1]
+    cum_c_nv_primo <- last$primo_CumI_c_nv - out$primo_CumI_c_nv[1]
+    cum_c_nv_rec   <- last$rec_CumI_c_nv   - out$rec_CumI_c_nv[1]
     
     # Vaccinated
-    cum_h_v_total <- out$CumI_h_v       - out$CumI_h_v[1]
-    cum_h_v_primo <- out$primo_CumI_h_v - out$primo_CumI_h_v[1]
-    cum_h_v_rec   <- out$rec_CumI_h_v   - out$rec_CumI_h_v[1]
+    cum_h_v_total <- last$CumI_h_v       - out$CumI_h_v[1]
+    cum_h_v_primo <- last$primo_CumI_h_v - out$primo_CumI_h_v[1]
+    cum_h_v_rec   <- last$rec_CumI_h_v   - out$rec_CumI_h_v[1]
     
-    cum_c_v_total <- out$CumI_c_v       - out$CumI_c_v[1]
-    cum_c_v_primo <- out$primo_CumI_c_v - out$primo_CumI_c_v[1]
-    cum_c_v_rec   <- out$rec_CumI_c_v   - out$rec_CumI_c_v[1]
+    cum_c_v_total <- last$CumI_c_v       - out$CumI_c_v[1]
+    cum_c_v_primo <- last$primo_CumI_c_v - out$primo_CumI_c_v[1]
+    cum_c_v_rec   <- last$rec_CumI_c_v   - out$rec_CumI_c_v[1]
     
     # Aggregated by setting
     cum_h_total <- cum_h_nv_total + cum_h_v_total
@@ -498,52 +448,27 @@ compute_metrics_scenario <- function(out, params) {
     
     # ---- Return ----
     return(list(
-      population = data.frame(time = last$time,
-                              N_h = N_h, N_c = N_c, N_tot = N_tot,
-                              N_h_nv = N_h_nv, N_c_nv = N_c_nv,
-                              N_h_v = N_h_v, N_c_v = N_c_v
-      ),
+      population = data.frame(time = last$time, N_h = N_h, N_c = N_c, N_tot = N_tot, N_nv = N_nv, N_v = N_v),
       
-      carriage = data.frame(time = last$time,
-                            prev_h = prev_h, prev_c = prev_c,
-                            prev_h_nv = prev_h_nv, prev_c_nv = prev_c_nv,
-                            prev_h_v = prev_h_v, prev_c_v = prev_c_v,
-                            prev_nv = prev_nv, prev_v = prev_v
-      ),
+      carriage = data.frame(time = last$time, prev_h = prev_h, prev_c = prev_c),
       
-      incidence_instant = data.frame(time = last$time,
-                                     # Raw
+      incidence_instant = data.frame(time = last$time, 
                                      inc_h_total, inc_h_primo, inc_h_rec,
                                      inc_c_total, inc_c_primo, inc_c_rec,
-                                     # By stratum
-                                     inc_h_nv_total, inc_h_nv_primo, inc_h_nv_rec,
-                                     inc_c_nv_total, inc_c_nv_primo, inc_c_nv_rec,
-                                     inc_h_v_total,  inc_h_v_primo,  inc_h_v_rec,
-                                     inc_c_v_total,  inc_c_v_primo,  inc_c_v_rec,
-                                     # Normalized
                                      inc_h_total_abs, inc_h_primo_abs, inc_h_rec_abs,
                                      inc_c_total_abs, inc_c_primo_abs, inc_c_rec_abs,
                                      inc_h_total_rel, inc_h_primo_rel, inc_h_rec_rel,
-                                     inc_c_total_rel, inc_c_primo_rel, inc_c_rec_rel
-      ),
+                                     inc_c_total_rel, inc_c_primo_rel, inc_c_rec_rel),
       
       incidence_cumulative = data.frame(time = last$time,
-                                        # Raw aggregated
                                         cum_h_total, cum_h_primo, cum_h_rec,
                                         cum_c_total, cum_c_primo, cum_c_rec,
-                                        # By stratum
-                                        cum_h_nv_total, cum_h_nv_primo, cum_h_nv_rec,
-                                        cum_c_nv_total, cum_c_nv_primo, cum_c_nv_rec,
-                                        cum_h_v_total,  cum_h_v_primo,  cum_h_v_rec,
-                                        cum_c_v_total,  cum_c_v_primo,  cum_c_v_rec,
-                                        # Normalized
                                         cum_h_total_abs, cum_h_primo_abs, cum_h_rec_abs,
                                         cum_c_total_abs, cum_c_primo_abs, cum_c_rec_abs,
                                         cum_h_total_rel, cum_h_primo_rel, cum_h_rec_rel,
-                                        cum_c_total_rel, cum_c_primo_rel, cum_c_rec_rel
-      ),
+                                        cum_c_total_rel, cum_c_primo_rel, cum_c_rec_rel),
       
-      recurrence = data.frame(time = last$time, rec1 = rec1, rec2 = rec2),
+      recurrence = data.frame(time = last$time, rec1 = rec1, rec2 = rec2)
       
     ))
   })
