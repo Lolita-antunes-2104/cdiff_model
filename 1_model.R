@@ -42,7 +42,7 @@ cdiff_model_for_calibration <- function(t, pop, params) {
     # ---- Dynamic alpha (hospital admissions) ----
     out_hc <- delta * (tot_h$S + tot_h$C) + delta_I * I_h + delta_II * I_II_h + delta_III * I_III_h
     den_alpha <- w * (tot_c$S + tot_c$C) + w_I * I_c + w_II * I_II_c + w_III * I_III_c
-    alpha <- if (is.na(den_alpha) || den_alpha <= 0) 0 else out_hc / den_alpha
+    alpha <- out_hc / den_alpha
     # admissions rates by infection state
     alpha_I   <- alpha * w_I
     alpha_II  <- alpha * w_II
@@ -102,7 +102,7 @@ cdiff_model_for_calibration <- function(t, pop, params) {
 }
 
 ###############################################################################
-# 3. STRATIFIED MODEL HOSPITAL/COMMUNITY/VACCINATION FOR SCENARIO
+# 3. STRATIFIED MODEL HOSPITAL/COMMUNITY FO VACCINATION/ATB SCENARIO
 ###############################################################################
 
 cdiff_model_for_scenario <- function(t, pop, params) {
@@ -142,7 +142,7 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     tau_h_red <- tau_h * tau_mult_red
     tau_c_red <- tau_c * tau_mult_red
     
-    # ---- ODE HOSPITAL / NON VACCINATED ----
+    # ---- ODE HOSPITAL / NON VACCINATED and NON ATB REDUCTION ----
     # Primary
     dS0_h_nv <- -lambda_h*S0_h_nv  + gamma_h*C0_h_nv  - tau_h*S0_h_nv  + omega_h*SA_h_nv  + phi_h*(S_II_h_nv + S_III_h_nv)             + alpha*S0_c_nv - delta*S0_h_nv
     dSA_h_nv <- -lambda_h*SA_h_nv  + gamma_h*CA_h_nv  + tau_h*S0_h_nv  - omega_h*SA_h_nv                                               + alpha*SA_c_nv - delta*SA_h_nv
@@ -162,7 +162,7 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dprimo_CumI_h_nv <- sigma_h*C0_h_nv + k_A*sigma_h*CA_h_nv 
     drec_CumI_h_nv <- k_II*sigma_h*C_II_h_nv + k_III*sigma_h*C_III_h_nv
 
-    # ---- ODE COMMUNITY / NON VACCINATED ----
+    # ---- ODE COMMUNITY / NON VACCINATED and NON ATB REDUCTION ----
     # Primary
     dS0_c_nv <- -lambda_c*S0_c_nv  + gamma_c*C0_c_nv  - tau_c*S0_c_nv  + omega_c*SA_c_nv  + phi_c*(S_II_c_nv + S_III_c_nv)             - alpha*S0_c_nv + delta*S0_h_nv
     dSA_c_nv <- -lambda_c*SA_c_nv  + gamma_c*CA_c_nv  + tau_c*S0_c_nv  - omega_c*SA_c_nv                                               - alpha*SA_c_nv + delta*SA_h_nv
@@ -182,7 +182,7 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dprimo_CumI_c_nv <- sigma_c*C0_c_nv + k_A*sigma_c*CA_c_nv 
     drec_CumI_c_nv <- k_II*sigma_c*C_II_c_nv + k_III*sigma_c*C_III_c_nv
     
-    # ---- HOSPITAL / VACCINATED ----
+    # ---- HOSPITAL / VACCINATED and ATB REDUCTION ----
     # Primary
     dS0_h_v <- -lambda_h*S0_h_v  + gamma_h*C0_h_v  - tau_h_red*S0_h_v  + omega_h*SA_h_v  + phi_h*(S_II_h_v + S_III_h_v)            + alpha*S0_c_v - delta*S0_h_v
     dSA_h_v <- -lambda_h*SA_h_v  + gamma_h*CA_h_v  + tau_h_red*S0_h_v  - omega_h*SA_h_v                                            + alpha*SA_c_v - delta*SA_h_v
@@ -202,7 +202,7 @@ cdiff_model_for_scenario <- function(t, pop, params) {
     dprimo_CumI_h_v <- sigma_h_v*C0_h_v + k_A*sigma_h_v*CA_h_v 
     drec_CumI_h_v <- k_II*sigma_h_v*C_II_h_v + k_III*sigma_h_v*C_III_h_v
     
-    # ---- COMMUNITY / VACCINATED ----
+    # ---- COMMUNITY / VACCINATED and ATB REDUCTION ----
     # Primary compartments
     dS0_c_v <- -lambda_c*S0_c_v  + gamma_c*C0_c_v  - tau_c_red*S0_c_v  + omega_c*SA_c_v  + phi_c*(S_II_c_v + S_III_c_v)            - alpha*S0_c_v + delta*S0_h_v
     dSA_c_v <- -lambda_c*SA_c_v  + gamma_c*CA_c_v  + tau_c_red*S0_c_v  - omega_c*SA_c_v                                            - alpha*SA_c_v + delta*SA_h_v
