@@ -6,10 +6,6 @@
 # 1. GRID SEARCH PLOT
 ###############################################################################
 
-###############################################################################
-# GENERIC GRID-SEARCH PLOT (works for beta / sigma / k)
-###############################################################################
-
 # Plot grid search results (convex hull in grey, best guess in blue, targets in red dashed)
 # Arguments:
 #   - grid_result: output from grid_search() => list(grid=..., best_guess=...)
@@ -40,13 +36,6 @@ plot_grid_search_generic <- function(grid_result, targets,
     return(p)
   }
   
-  # Convex hull (need at least 3 points)
-  hull_data <- NULL
-  if (nrow(df_ok) >= 3) {
-    hull_idx <- chull(df_ok[[x_var]], df_ok[[y_var]])
-    hull_data <- df_ok[hull_idx, , drop = FALSE]
-  }
-  
   # Targets
   tx <- targets[[x_target]]
   ty <- targets[[y_target]]
@@ -54,8 +43,13 @@ plot_grid_search_generic <- function(grid_result, targets,
   # Plot
   p <- ggplot(df_ok, aes(x = .data[[x_var]], y = .data[[y_var]])) +
     
-    # Grey hull (only if it exists)
-    { if (!is.null(hull_data)) geom_polygon(data = hull_data, fill = "grey80", alpha = 0.5) } +
+    # Grey hull
+    ggforce::geom_mark_hull(
+      concavity = 20,
+      expand = grid::unit(0, "mm"),
+      radius = grid::unit(0, "mm"),
+      fill = "grey80", alpha = 0.5, color = NA
+    ) +
     
     # Cloud of points
     geom_point(alpha = 0.3, size = 0.5) +
