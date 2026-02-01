@@ -7,7 +7,7 @@
 ###############################################################################
 
 # Run the CALIBRATION model and stop early if equilibrium is reached 
-run_calib_model_to_equilibrium <- function(params, init_cond, time_vec) {
+run_calib_model_to_equilibrium <- function(params, init_cond, time_vec, threshold) {
   
   out_all <- NULL                                 # create an empty object that will progressively store the full simulated trajectory (all time rows) as we simulate chunk by chunk
   pop <- init_cond                                # copy the initial state vector into 'pop'; this is the current state that will be used as the initial condition for the next ODE solve
@@ -37,7 +37,7 @@ run_calib_model_to_equilibrium <- function(params, init_cond, time_vec) {
     derivs_end <- cdiff_model_for_calibration(t_next, pop, params)[[1]] # Compute the derivatives dX/dt at the end of the chunk by calling the ODE function directly; [[1]] extracts the numeric derivative vector from the list returned by the ODE function.
     names(derivs_end) <- names(pop)                             # Name the derivative entries so we can safely subset by compartment names and keep alignment with 'pop'.
     
-    if (all(abs(derivs_end) < 1e-8)) break            # abs() takes absolute values; we subset to non-Cum compartments; all() returns TRUE only if every value is < 1e-6, and if so we break out of the loop (equilibrium reached).
+    if (all(abs(derivs_end) < threshold)) break            # abs() takes absolute values; all() returns TRUE only if every value is < threshold, and if so we break out of the loop (equilibrium reached)
     t <- t_next                                                 # Update the current time to the end of this chunk so the next loop iteration starts where we left off.
   }
   return(out_all)                                  # Return the full concatenated trajectory (a data.frame with one row per time and one column per compartment, including "time").
@@ -62,7 +62,10 @@ get_last_state <- function(out) {
 ###############################################################################
 
 grid_search <- function(param_names, param_ranges, metric_function,           # define a function that explores a grid of 2 parameters (param_names), runs a metric_function, and finds the best match to target_metrics using parallel computing
-                        target_metrics, params_base, init_cond, time_vec, n_cores) { # function arguments: targets, baseline params, initial conditions, time vector for ODE, and number of CPU cores to use
+                        target_metrics, params_base, init_cond, time_vec, 
+                        n_cores, threshold) { # function arguments: targets, baseline params, initial conditions, time vector for ODE, and number of CPU cores to use
+  
+  force(threshold) # important for parallel
   
   # Build sequences for each parameter
   grid_list <- list()                                                         # create an empty list that will store the sequences (vectors) of values to try for each parameter
@@ -79,7 +82,8 @@ grid_search <- function(param_names, param_ranges, metric_function,           # 
                                 "target_metrics", "params_base", "init_cond", "time_vec", # export the inputs needed inside the parallel loop (baseline params, initial state, time vector, etc.)
                                 "run_calib_model_to_equilibrium", "get_last_state", # export helper functions used by metric_function (or by the model-run pipeline inside it)
                                 "compute_totals", "compute_lambda", "compute_R0",   # export model helper functions used by the ODE function
-                                "cdiff_model_for_calibration", "compute_metrics_calib"), # export the ODE function and the metrics function used to evaluate each simulation
+                                "cdiff_model_for_calibration", "compute_metrics_calib",
+                                "threshold"), # export the ODE function and the metrics function used to evaluate each simulation
                           envir = environment())                               # envir=environment() tells clusterExport() to look for these objects in the current function environment (not only in .GlobalEnv)
   
   # Run metrics in parallel for each grid row
@@ -88,7 +92,7 @@ grid_search <- function(param_names, param_ranges, metric_function,           # 
     row <- as.numeric(param_grid[i, param_names])                              # take the i-th row of the grid, select the 2 parameter columns, and convert to a numeric vector
     names(row) <- param_names                                                  # assign names to the vector so metric_function can refer to parameters by name (e.g., row["beta_h"])
     
-    m <- metric_function(row, params_base, init_cond, time_vec)                # call the user-provided metric_function: it usually runs the ODE with these parameters and returns computed metrics (as a named numeric vector)
+    m <- metric_function(row, params_base, init_cond, time_vec, threshold)      # call the user-provided metric_function: it usually runs the ODE with these parameters and returns computed metrics (as a named numeric vector)
     return(m)                                                                  # return the metrics for this grid row back to the master process
   })
   
@@ -128,13 +132,13 @@ grid_search <- function(param_names, param_ranges, metric_function,           # 
 ###############################################################################
 
 # Grid 1: calibrate beta_h, beta_c using carriage prevalence (prev_h, prev_c)
-compute_metrics_beta <- function(param_row, params_base, init_cond, time_vec) { # define the metric function used in Grid Search 1 (it receives 1 grid row + the baseline params + init conditions + time vector)
+compute_metrics_beta <- function(param_row, params_base, init_cond, time_vec, threshold) { # define the metric function used in Grid Search 1 (it receives 1 grid row + the baseline params + init conditions + time vector)
   
   params_tmp <- params_base                                                    # copy the baseline parameter vector into a temporary one (so we don't overwrite the original)
   params_tmp["beta_h"] <- param_row["beta_h"]                                  # replace beta_h in the temporary params by the grid value beta_h from this row
   params_tmp["beta_c"] <- param_row["beta_c"]                                  # replace beta_c in the temporary params by the grid value beta_c from this row
   
-  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec)             # run the ODE model (lsoda) with these temporary params, starting from init_cond, over time_vec
+  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec, threshold)             # run the ODE model (lsoda) with these temporary params, starting from init_cond, over time_vec
   metrics <- compute_metrics_calib(out, params_tmp)                            # compute all calibration metrics at the end of the simulation using the same params
   
   prev_h <- tail(metrics$carriage$prev_h, 1)                                   # take the last hospital carriage prevalence value (tail(...,1) = last element)
@@ -145,14 +149,14 @@ compute_metrics_beta <- function(param_row, params_base, init_cond, time_vec) { 
 }
 
 # Grid 2: calibrate sigma_h, sigma_c using incidence rates per N_tot (abs)
-compute_metrics_sigma <- function(param_row, params_base, init_cond, time_vec) { # define the metric function used in Grid Search 2 (it calibrates sigma parameters)
+compute_metrics_sigma <- function(param_row, params_base, init_cond, time_vec, threshold) { # define the metric function used in Grid Search 2 (it calibrates sigma parameters)
   
   params_tmp <- params_base                                                      # copy the baseline parameters into a temporary vector
   # IMPORTANT (logic): here, params_base is assumed to ALREADY contain the best beta_h and beta_c from Grid 1 (i.e., you updated params_base with best_guess beta before calling Grid 2)
   params_tmp["sigma_h"] <- param_row["sigma_h"]                                  # replace sigma_h by the grid value sigma_h from this row
   params_tmp["sigma_c"] <- param_row["sigma_c"]                                  # replace sigma_c by the grid value sigma_c from this row
   
-  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec)               # run the ODE model with (best betas + candidate sigmas)
+  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec, threshold)               # run the ODE model with (best betas + candidate sigmas)
   metrics <- compute_metrics_calib(out, params_tmp)                              # compute metrics at equilibrium / last time
   
   inc_h <- tail(metrics$incidence_instant$inc_h_total_abs, 1)                    # take the last hospital total incidence normalized by N_tot (absolute normalization)
@@ -163,14 +167,14 @@ compute_metrics_sigma <- function(param_row, params_base, init_cond, time_vec) {
 }
 
 # Grid 3: calibrate k_II, k_III using recurrence prevalence (overall, h+c)
-compute_metrics_k <- function(param_row, params_base, init_cond, time_vec) {     # define the metric function used in Grid Search 3 (it calibrates recurrence multipliers)
+compute_metrics_k <- function(param_row, params_base, init_cond, time_vec, threshold) {     # define the metric function used in Grid Search 3 (it calibrates recurrence multipliers)
   
   params_tmp <- params_base                                                      # copy the baseline parameters into a temporary vector
   # IMPORTANT (logic): here, params_base is assumed to ALREADY contain the best beta_h/beta_c from Grid 1 AND the best sigma_h/sigma_c from Grid 2 (i.e., you updated params_base with both best_guess beta and best_guess sigma before calling Grid 3)
   params_tmp["k_II"] <- param_row["k_II"]                                        # replace k_II by the grid value k_II from this row
   params_tmp["k_III"] <- param_row["k_III"]                                      # replace k_III by the grid value k_III from this row
   
-  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec)               # run the ODE model with (best betas + best sigmas + candidate k values)
+  out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec, threshold)               # run the ODE model with (best betas + best sigmas + candidate k values)
   metrics <- compute_metrics_calib(out, params_tmp)                              # compute metrics at equilibrium / last time (includes recurrence prevalence)
   
   rec1 <- tail(metrics$recurrence$rec1, 1)                                       # take the last recurrence prevalence rec1 (I_II / I) from the metrics output
@@ -188,7 +192,14 @@ compute_metrics_k <- function(param_row, params_base, init_cond, time_vec) {    
 # 4. OBJECTIVE FUNCTION (FOR MULTI-START OPTIM)
 ###############################################################################
 
-create_objective_function <- function(target_metrics, params_base, init_cond, time_vec) { # define a function that BUILDS and RETURNS an objective function, using fixed inputs (targets + base params + init state + time grid)
+create_objective_function <- function(target_metrics, params_base, init_cond, time_vec, threshold) { # define a function that BUILDS and RETURNS an objective function, using fixed inputs (targets + base params + init state + time grid)
+  
+  # Force captured objects so they are embedded in the closure (important for parallel workers)
+  force(target_metrics)
+  force(params_base)
+  force(init_cond)
+  force(time_vec)
+  force(threshold)
   
   par_names <- c("beta_h","beta_c","sigma_h","sigma_c","k_II","k_III")         # define the names of the parameters we want to estimate during calibration (these will be optimized)
   
@@ -200,7 +211,7 @@ create_objective_function <- function(target_metrics, params_base, init_cond, ti
     params_tmp <- params_base                                                 # copy the baseline parameter vector so we do not modify params_base directly
     params_tmp[par_names] <- par                                              # replace the 6 parameters in params_tmp by the candidate values proposed by the optimizer
     
-    out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec)          # run the ODE model with these candidate parameters to reach equilibrium (or the end of time_vec)
+    out <- run_calib_model_to_equilibrium(params_tmp, init_cond, time_vec, threshold)          # run the ODE model with these candidate parameters to reach equilibrium (or the end of time_vec)
     metrics <- compute_metrics_calib(out, params_tmp)                         # compute the calibration metrics from the simulated trajectory (carriage, incidence, recurrence, etc.)
 
     # Targets: carriage
@@ -250,6 +261,7 @@ run_multistart_optimization <- function(objective_fn, initial_log, n_starts, n_c
   # Create a parallel cluster
   cl <- parallel::makeCluster(n_cores)                                        # makeCluster(n_cores) starts n_cores worker R processes for parallel computation
   parallel::clusterExport(cl, c("objective_fn", "start_points", "maxit",       # clusterExport() copies these objects from the current environment to every worker so they can be used inside the parallel function
+                                "params",
                                 "run_calib_model_to_equilibrium", "get_last_state", # export helper functions that objective_fn might call (directly or indirectly)
                                 "compute_totals", "compute_lambda", "compute_R0",   # export model helper functions used by the ODE system
                                 "cdiff_model_for_calibration", "compute_metrics_calib"), # export the ODE function and metric function used during simulation
@@ -293,12 +305,12 @@ run_multistart_optimization <- function(objective_fn, initial_log, n_starts, n_c
 ###############################################################################
 
 run_calibration <- function(initial_params, target_metrics, params_base,       # define a wrapper function that prepares inputs (log initial guess + objective function) and runs the multi-start optimization
-                            init_cond, time_vec, n_starts, n_cores, maxit) {  # arguments: initial params, targets, baseline params, initial state, time vector, number of starts, number of cores, and max iterations
+                            init_cond, time_vec, n_starts, n_cores, maxit, threshold) {  # arguments: initial params, targets, baseline params, initial state, time vector, number of starts, number of cores, and max iterations
   
   par_names <- c("beta_h","beta_c","sigma_h","sigma_c","k_II","k_III")         # define the exact parameter names that are calibrated (must match names in initial_params and params_base)
   initial_log <- log(initial_params[par_names])                               # log() transforms the initial guesses to log-space so optim can search over all real numbers while ensuring positivity after exp()
   
-  objective_fn <- create_objective_function(target_metrics, params_base, init_cond, time_vec) # build the objective function by "freezing" targets + base params + init conditions + time grid inside it
+  objective_fn <- create_objective_function(target_metrics, params_base, init_cond, time_vec, threshold) # build the objective function by "freezing" targets + base params + init conditions + time grid inside it
   
   res <- run_multistart_optimization(objective_fn, initial_log, n_starts, n_cores, maxit)     # run the parallel multi-start optimizations and get back the best run + all runs
   

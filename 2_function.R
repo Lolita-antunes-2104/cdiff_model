@@ -233,8 +233,9 @@ compute_metrics_calib <- function(out, params) {
   
   out <- as.data.frame(out) 
   last <- out[nrow(out), ]   # last row of out, at equilibrium 
+  params_vec <- params
 
-  with(as.list(params), {
+  with(as.list(params_vec), {
     
     # ---- Populations (Nh, Nc, Ntot) ----
     final_tot_h <- compute_totals(last$S0_h, last$C0_h, last$SA_h, last$CA_h, last$I_h, last$S_II_h, last$C_II_h, last$I_II_h, last$S_III_h, last$C_III_h, last$I_III_h)
@@ -285,7 +286,7 @@ compute_metrics_calib <- function(out, params) {
     rec2 <- ifelse(I2 == 0, 0, I3 / I2)                             # recid_2
     
     # ---- R0 (simple proxy time series) ----
-    R0_df <- compute_R0(params, N_h0 = N_h, N_c0 = N_c)
+    R0_df <- compute_R0(params_vec, N_h0 = N_h, N_c0 = N_c)
     
     return(list(
       population = data.frame(time = last$time, N_h = N_h, N_c = N_c, N_tot = N_tot),

@@ -81,6 +81,9 @@ params <- c(
   prop    = prop
 )
 
+alpha_fixed <- if ((w * N_c) == 0) 0 else delta * N_h / (w * N_c)
+params <- c(params, alpha_fixed = alpha_fixed)
+
 ###############################################################################
 # 2. INITIAL CONDITIONS & TIME FOR CALIBRATION
 ###############################################################################
@@ -95,6 +98,8 @@ init_cond <- create_initial_conditions_precalibration(
 
 # Time grid (days): long horizon so the model has time to reach equilibrium
 time_vec <- seq(0, 10000, by = 1)
+threshold_grid  <- 1e-6   # faster 
+threshold_calib <- 1e-10  # stricter
 
 # ---- Target metrics from literature ----
 target_metrics <- list(
@@ -123,8 +128,8 @@ beta_grid <- grid_search(
   params_base = params,
   init_cond   = init_cond,
   time_vec    = time_vec,
-  n_cores     = 4
-)
+  n_cores     = 4,
+  threshold = threshold_grid)
 
 best_beta <- beta_grid$best_guess[, c("beta_h", "beta_c")]
 params[c("beta_h", "beta_c")] <- as.numeric(best_beta)
@@ -146,8 +151,8 @@ sigma_grid <- grid_search(
   params_base = params,     # params already contains best beta from Grid 1
   init_cond   = init_cond,
   time_vec    = time_vec,
-  n_cores     = 4
-)
+  n_cores     = 4, 
+  threshold = threshold_grid)
 
 best_sigma <- sigma_grid$best_guess[, c("sigma_h", "sigma_c")]
 params[c("sigma_h", "sigma_c")] <- as.numeric(best_sigma)
@@ -160,8 +165,8 @@ print(p_sigma)
 k_grid <- grid_search(
   param_names = c("k_II", "k_III"),
   param_ranges = list(
-    k_II  = c(1, 4, 25),
-    k_III = c(1, 6, 25)
+    k_II  = c(1, 1000, 25),
+    k_III = c(1, 1000, 25)
   ),
   metric_function = compute_metrics_k,
   target_metrics  = list(recid_1 = target_metrics$recid_1,
@@ -169,8 +174,8 @@ k_grid <- grid_search(
   params_base = params,     # params already contains best beta + best sigma
   init_cond   = init_cond,
   time_vec    = time_vec,
-  n_cores     = 4
-)
+  n_cores     = 4,
+  threshold = threshold_grid)
 
 best_k <- k_grid$best_guess[, c("k_II", "k_III")]
 params[c("k_II", "k_III")] <- as.numeric(best_k)
@@ -197,7 +202,8 @@ calib_res <- run_calibration(
   time_vec       = time_vec,
   n_starts       = n_starts,
   n_cores        = n_cores,
-  maxit          = maxit
+  maxit          = maxit,
+  threshold      = threshold_calib
 )
 
 # Build the final calibrated parameter vector
@@ -205,17 +211,17 @@ params_calib <- params
 params_calib[names(calib_res$best$par)] <- calib_res$best$par
 
 # Simulate once with calibrated parameters and compute metrics
-out_calib <- run_calib_model_to_equilibrium(params_calib, init_cond, time_vec)
+out_calib <- run_calib_model_to_equilibrium(params_calib, init_cond, time_vec, threshold_calib)
 metrics_calib <- compute_metrics_calib(out_calib, params_calib)
 
 # Quick check: print last values vs targets
-# cat("\n--- CALIBRATION CHECK (last time point) ---\n")
-# cat("prevalence_h:", tail(metrics_calib$carriage$prev_h, 1), " target:", target_metrics$prevalence_h, "\n")
-# cat("prevalence_c:", tail(metrics_calib$carriage$prev_c, 1), " target:", target_metrics$prevalence_c, "\n")
-# cat("incidence_h :", tail(metrics_calib$incidence_instant$inc_h_total_abs, 1), " target:", target_metrics$incidence_h, "\n")
-# cat("incidence_c :", tail(metrics_calib$incidence_instant$inc_c_total_abs, 1), " target:", target_metrics$incidence_c, "\n")
-# cat("recid_1     :", tail(metrics_calib$recurrence$rec1, 1), " target:", target_metrics$recid_1, "\n")
-# cat("recid_2     :", tail(metrics_calib$recurrence$rec2, 1), " target:", target_metrics$recid_2, "\n")
+cat("\n--- CALIBRATION CHECK (last time point) ---\n")
+cat("prevalence_h:", tail(metrics_calib$carriage$prev_h, 1), " target:", target_metrics$prevalence_h, "\n")
+cat("prevalence_c:", tail(metrics_calib$carriage$prev_c, 1), " target:", target_metrics$prevalence_c, "\n")
+cat("incidence_h :", tail(metrics_calib$incidence_instant$inc_h_total_abs, 1), " target:", target_metrics$incidence_h, "\n")
+cat("incidence_c :", tail(metrics_calib$incidence_instant$inc_c_total_abs, 1), " target:", target_metrics$incidence_c, "\n")
+cat("recid_1     :", tail(metrics_calib$recurrence$rec1, 1), " target:", target_metrics$recid_1, "\n")
+cat("recid_2     :", tail(metrics_calib$recurrence$rec2, 1), " target:", target_metrics$recid_2, "\n")
 
 
 
@@ -229,8 +235,8 @@ metrics_calib <- compute_metrics_calib(out_calib, params_calib)
 out_eq <- run_calib_model_to_equilibrium(
   params   = params_calib,   # calibrated parameters
   init_cond = init_cond,     # initial conditions
-  time_vec = time_vec        # long horizon, but will stop early if equilibrium reached
-)
+  time_vec = time_vec,        # long horizon, but will stop early if equilibrium reached
+  threshold = threshold_calib)
 
 # Get the last state (equilibrium state) as a named numeric vector
 state_eq <- get_last_state(out_eq)
