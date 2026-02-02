@@ -85,17 +85,36 @@ plot_grid_search_beta <- function(grid_result, targets) {
 
 # 2) sigma grid
 plot_grid_search_sigma <- function(grid_result, targets) {
+  
+  # Convert from per person per day -> per 100k per year
+  scale <- 365 * 1e5
+  
+  grid2 <- grid_result
+  grid2$grid <- within(grid2$grid, {
+    incidence_h <- incidence_h * scale
+    incidence_c <- incidence_c * scale
+  })
+  grid2$best_guess <- within(grid2$best_guess, {
+    incidence_h <- incidence_h * scale
+    incidence_c <- incidence_c * scale
+  })
+  
+  targets2 <- targets
+  targets2$incidence_h <- targets2$incidence_h * scale
+  targets2$incidence_c <- targets2$incidence_c * scale
+  
   plot_grid_search_generic(
-    grid_result = grid_result,
-    targets = targets,
+    grid_result = grid2,
+    targets = targets2,
     x_var = "incidence_h", y_var = "incidence_c",
     x_target = "incidence_h", y_target = "incidence_c",
     title = "Grid search: sigma_h, sigma_c",
     subtitle = "Feasible incidence space",
-    x_lab = "Incidence hospital (per day)",
-    y_lab = "Incidence community (per day)"
+    x_lab = "Incidence hospital (per 100k per year)",
+    y_lab = "Incidence community (per 100k per year)"
   )
 }
+
 
 # 3) k grid
 plot_grid_search_k <- function(grid_result, targets) {
@@ -184,10 +203,6 @@ plot_dynamics <- function(ode_result, targets, N_h, N_c) {
   return(list(hospital = p_h, community = p_c, both = p_both))
 }
 
-
-###############################################################################
-# 2. ALPHA DYNAMICS PLOT
-###############################################################################
 
 # Plot admission rate alpha(t) over time (computed from state + params)
 # This is the same logic as in calibration model: alpha = out_hc / den_alpha
