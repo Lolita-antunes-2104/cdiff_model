@@ -206,68 +206,52 @@ prev_plot <- rbind(
 prev_plot$scenario <- factor(prev_plot$scenario, levels = scenarios_bar)
 
 scale_inc <- 365 * 1e5
-inc_total <- rbind(
-  data.frame(setting = "Hospital", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_h_total_abs,
-                       metrics_10$incidence_instant$inc_h_total_abs,
-                       metrics_20$incidence_instant$inc_h_total_abs) * scale_inc),
-  data.frame(setting = "Community", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_c_total_abs,
-                       metrics_10$incidence_instant$inc_c_total_abs,
-                       metrics_20$incidence_instant$inc_c_total_abs) * scale_inc)
+
+inc_plot <- rbind(
+  data.frame(type = "Total CDI", scenario = scenarios_bar,
+             value = c(
+               (metrics_05$incidence_instant$inc_h_total_abs + metrics_05$incidence_instant$inc_c_total_abs) * scale_inc,
+               (metrics_10$incidence_instant$inc_h_total_abs + metrics_10$incidence_instant$inc_c_total_abs) * scale_inc,
+               (metrics_20$incidence_instant$inc_h_total_abs + metrics_20$incidence_instant$inc_c_total_abs) * scale_inc
+             )),
+  data.frame(type = "Primo CDI", scenario = scenarios_bar,
+             value = c(
+               (metrics_05$incidence_instant$inc_h_primo_abs + metrics_05$incidence_instant$inc_c_primo_abs) * scale_inc,
+               (metrics_10$incidence_instant$inc_h_primo_abs + metrics_10$incidence_instant$inc_c_primo_abs) * scale_inc,
+               (metrics_20$incidence_instant$inc_h_primo_abs + metrics_20$incidence_instant$inc_c_primo_abs) * scale_inc
+             )),
+  data.frame(type = "Recidive CDI", scenario = scenarios_bar,
+             value = c(
+               (metrics_05$incidence_instant$inc_h_rec_abs + metrics_05$incidence_instant$inc_c_rec_abs) * scale_inc,
+               (metrics_10$incidence_instant$inc_h_rec_abs + metrics_10$incidence_instant$inc_c_rec_abs) * scale_inc,
+               (metrics_20$incidence_instant$inc_h_rec_abs + metrics_20$incidence_instant$inc_c_rec_abs) * scale_inc
+             ))
 )
-inc_primo <- rbind(
-  data.frame(setting = "Hospital", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_h_primo_abs,
-                       metrics_10$incidence_instant$inc_h_primo_abs,
-                       metrics_20$incidence_instant$inc_h_primo_abs) * scale_inc),
-  data.frame(setting = "Community", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_c_primo_abs,
-                       metrics_10$incidence_instant$inc_c_primo_abs,
-                       metrics_20$incidence_instant$inc_c_primo_abs) * scale_inc)
-)
-inc_rec <- rbind(
-  data.frame(setting = "Hospital", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_h_rec_abs,
-                       metrics_10$incidence_instant$inc_h_rec_abs,
-                       metrics_20$incidence_instant$inc_h_rec_abs) * scale_inc),
-  data.frame(setting = "Community", scenario = scenarios_bar,
-             value = c(metrics_05$incidence_instant$inc_c_rec_abs,
-                       metrics_10$incidence_instant$inc_c_rec_abs,
-                       metrics_20$incidence_instant$inc_c_rec_abs) * scale_inc)
-)
-inc_total$scenario <- factor(inc_total$scenario, levels = scenarios_bar)
-inc_primo$scenario <- factor(inc_primo$scenario, levels = scenarios_bar)
-inc_rec$scenario   <- factor(inc_rec$scenario, levels = scenarios_bar)
+inc_plot$type <- factor(inc_plot$type, levels = c("Total CDI", "Primo CDI", "Recidive CDI"))
+inc_plot$scenario <- factor(inc_plot$scenario, levels = scenarios_bar)
 
 base_prev <- rbind(
   data.frame(setting = "Hospital", value = metrics_base50$carriage$prev_h),
   data.frame(setting = "Community", value = metrics_base50$carriage$prev_c)
 )
-base_total <- rbind(
-  data.frame(setting = "Hospital", value = metrics_base50$incidence_instant$inc_h_total_abs * scale_inc),
-  data.frame(setting = "Community", value = metrics_base50$incidence_instant$inc_c_total_abs * scale_inc)
+base_inc <- data.frame(
+  type = c("Total CDI", "Primo CDI", "Recidive CDI"),
+  value = c(
+    (metrics_base50$incidence_instant$inc_h_total_abs + metrics_base50$incidence_instant$inc_c_total_abs) * scale_inc,
+    (metrics_base50$incidence_instant$inc_h_primo_abs + metrics_base50$incidence_instant$inc_c_primo_abs) * scale_inc,
+    (metrics_base50$incidence_instant$inc_h_rec_abs + metrics_base50$incidence_instant$inc_c_rec_abs) * scale_inc
+  )
 )
-base_primo <- rbind(
-  data.frame(setting = "Hospital", value = metrics_base50$incidence_instant$inc_h_primo_abs * scale_inc),
-  data.frame(setting = "Community", value = metrics_base50$incidence_instant$inc_c_primo_abs * scale_inc)
-)
-base_rec <- rbind(
-  data.frame(setting = "Hospital", value = metrics_base50$incidence_instant$inc_h_rec_abs * scale_inc),
-  data.frame(setting = "Community", value = metrics_base50$incidence_instant$inc_c_rec_abs * scale_inc)
-)
+base_inc$type <- factor(base_inc$type, levels = c("Total CDI", "Primo CDI", "Recidive CDI"))
+base_inc$x <- as.numeric(base_inc$type)
+base_inc$x_start <- base_inc$x - 0.45
+base_inc$x_end <- base_inc$x + 0.45
 
 label_prev <- merge(prev_plot, base_prev, by = "setting", suffixes = c("", "_base"))
 label_prev$lab <- sprintf("%+.0f%%", 100 * (label_prev$value / label_prev$value_base - 1))
 
-label_total <- merge(inc_total, base_total, by = "setting", suffixes = c("", "_base"))
-label_total$lab <- sprintf("%+.0f%%", 100 * (label_total$value / label_total$value_base - 1))
-
-label_primo <- merge(inc_primo, base_primo, by = "setting", suffixes = c("", "_base"))
-label_primo$lab <- sprintf("%+.0f%%", 100 * (label_primo$value / label_primo$value_base - 1))
-
-label_rec <- merge(inc_rec, base_rec, by = "setting", suffixes = c("", "_base"))
-label_rec$lab <- sprintf("%+.0f%%", 100 * (label_rec$value / label_rec$value_base - 1))
+label_inc <- merge(inc_plot, base_inc[, c("type", "value")], by = "type", suffixes = c("", "_base"))
+label_inc$lab <- sprintf("%+.0f%%", 100 * (label_inc$value / label_inc$value_base - 1))
 
 p_prev <- ggplot(prev_plot, aes(x = scenario, y = value, fill = scenario)) +
   geom_col(color = "black", linewidth = 0.3) +
@@ -278,41 +262,23 @@ p_prev <- ggplot(prev_plot, aes(x = scenario, y = value, fill = scenario)) +
   theme_bw() +
   labs(x = NULL, y = "Colonization prevalence", title = "Colonization prevalence (relative change)")
 
-p_total <- ggplot(inc_total, aes(x = scenario, y = value, fill = scenario)) +
-  geom_col(color = "black", linewidth = 0.3) +
-  geom_hline(data = base_total, aes(yintercept = value), color = "red", linetype = "dashed", linewidth = 0.8) +
-  geom_text(data = label_total, aes(y = value, label = lab), vjust = 1.2, size = 3) +
-  facet_wrap(~ setting, ncol = 2) +
+p_inc <- ggplot(inc_plot, aes(x = type, y = value, fill = scenario)) +
+  geom_col(position = position_dodge(width = 0.8), color = "black", linewidth = 0.3) +
+  geom_segment(data = base_inc,
+               aes(x = x_start, xend = x_end, y = value, yend = value),
+               color = "red", linetype = "dashed", linewidth = 0.8) +
+  geom_text(data = label_inc, aes(x = type, y = value, label = lab),
+            position = position_dodge(width = 0.8), vjust = 1.2, size = 3) +
   scale_fill_manual(values = cols) +
   theme_bw() +
-  labs(x = NULL, y = "CDI incidence (/100k/year)", title = "Total CDI (relative change)")
-
-p_primo <- ggplot(inc_primo, aes(x = scenario, y = value, fill = scenario)) +
-  geom_col(color = "black", linewidth = 0.3) +
-  geom_hline(data = base_primo, aes(yintercept = value), color = "red", linetype = "dashed", linewidth = 0.8) +
-  geom_text(data = label_primo, aes(y = value, label = lab), vjust = 1.2, size = 3) +
-  facet_wrap(~ setting, ncol = 2) +
-  scale_fill_manual(values = cols) +
-  theme_bw() +
-  labs(x = NULL, y = "CDI incidence (/100k/year)", title = "Primo CDI (relative change)")
-
-p_rec <- ggplot(inc_rec, aes(x = scenario, y = value, fill = scenario)) +
-  geom_col(color = "black", linewidth = 0.3) +
-  geom_hline(data = base_rec, aes(yintercept = value), color = "red", linetype = "dashed", linewidth = 0.8) +
-  geom_text(data = label_rec, aes(y = value, label = lab), vjust = 1.2, size = 3) +
-  facet_wrap(~ setting, ncol = 2) +
-  scale_fill_manual(values = cols) +
-  theme_bw() +
-  labs(x = NULL, y = "CDI incidence (/100k/year)", title = "Recidive CDI (relative change)")
+  labs(x = NULL, y = "CDI incidence (/100k/year)", title = "CDI incidence (relative change)")
 
 print(p_prev)
-print(p_total)
-print(p_primo)
-print(p_rec)
+print(p_inc)
 
-p_all <- p_prev / p_total / p_primo / p_rec
+p_all <- p_prev / p_inc
 print(p_all)
-ggplot2::ggsave("plots_atb.png", p_all, width = 12, height = 16, dpi = 300)
+ggplot2::ggsave("plots_atb.png", p_all, width = 12, height = 10, dpi = 300)
 
 
 
@@ -342,11 +308,11 @@ base_inc_rec_c <- metrics_v0$incidence_instant$inc_c_rec_abs * scale_inc
 
 rows <- list()
 idx <- 1
-for (ve in ves) {
-  params_ve <- c(params, tau_mult_red = 1, sigma_mult_v = 1 - ve)
-  for (vc in coverages) {
-    out <- deSolve::lsoda(y = make_init(vc), times = time, func = cdiff_model_for_scenario, parms = params_ve)
-    m <- compute_metrics_scenario(out, params_ve)
+  for (ve in ves) {
+    params_ve <- c(params, tau_mult_red = 1, sigma_mult_v = 1 - ve)
+    for (vc in coverages) {
+      out <- deSolve::lsoda(y = make_init(vc), times = time, func = cdiff_model_for_scenario, parms = params_ve)
+      m <- compute_metrics_scenario(out, params_ve)
     rows[[idx]] <- data.frame(
       ve = ve, vc = vc, setting = "Hospital", metric = "Prevalence",
       rel = 100 * (m$carriage$prev_h / base_prev_h - 1)
@@ -356,12 +322,8 @@ for (ve in ves) {
       rel = 100 * (m$carriage$prev_c / base_prev_c - 1)
     ); idx <- idx + 1
     rows[[idx]] <- data.frame(
-      ve = ve, vc = vc, setting = "Hospital", metric = "Total CDI",
-      rel = 100 * ((m$incidence_instant$inc_h_total_abs * scale_inc) / base_inc_total_h - 1)
-    ); idx <- idx + 1
-    rows[[idx]] <- data.frame(
-      ve = ve, vc = vc, setting = "Community", metric = "Total CDI",
-      rel = 100 * ((m$incidence_instant$inc_c_total_abs * scale_inc) / base_inc_total_c - 1)
+      ve = ve, vc = vc, setting = "All", metric = "Total CDI",
+      rel = 100 * (((m$incidence_instant$inc_h_total_abs + m$incidence_instant$inc_c_total_abs) * scale_inc) / (base_inc_total_h + base_inc_total_c) - 1)
     ); idx <- idx + 1
     rows[[idx]] <- data.frame(
       ve = ve, vc = vc, setting = "Hospital", metric = "Primo CDI",
@@ -372,12 +334,20 @@ for (ve in ves) {
       rel = 100 * ((m$incidence_instant$inc_c_primo_abs * scale_inc) / base_inc_primo_c - 1)
     ); idx <- idx + 1
     rows[[idx]] <- data.frame(
+      ve = ve, vc = vc, setting = "All", metric = "Primo CDI",
+      rel = 100 * (((m$incidence_instant$inc_h_primo_abs + m$incidence_instant$inc_c_primo_abs) * scale_inc) / (base_inc_primo_h + base_inc_primo_c) - 1)
+    ); idx <- idx + 1
+    rows[[idx]] <- data.frame(
       ve = ve, vc = vc, setting = "Hospital", metric = "Recidive CDI",
       rel = 100 * ((m$incidence_instant$inc_h_rec_abs * scale_inc) / base_inc_rec_h - 1)
     ); idx <- idx + 1
     rows[[idx]] <- data.frame(
       ve = ve, vc = vc, setting = "Community", metric = "Recidive CDI",
       rel = 100 * ((m$incidence_instant$inc_c_rec_abs * scale_inc) / base_inc_rec_c - 1)
+    ); idx <- idx + 1
+    rows[[idx]] <- data.frame(
+      ve = ve, vc = vc, setting = "All", metric = "Recidive CDI",
+      rel = 100 * (((m$incidence_instant$inc_h_rec_abs + m$incidence_instant$inc_c_rec_abs) * scale_inc) / (base_inc_rec_h + base_inc_rec_c) - 1)
     ); idx <- idx + 1
   }
 }
@@ -388,33 +358,44 @@ vacc_df$ve <- factor(vacc_df$ve, levels = ves)
 ve_cols_prev <- c("0.3" = "#C79BFF", "0.5" = "#7B2CFF", "0.6" = "#4A00C9")
 ve_cols_inc  <- c("0.3" = "#8CC7FF", "0.5" = "#2C7DFF", "0.6" = "#0047B8")
 
-plot_vacc <- function(metric_name, title_txt, cols_use) {
+plot_vacc <- function(metric_name, title_txt, cols_use, facet_setting = TRUE) {
   df <- vacc_df[vacc_df$metric == metric_name, ]
-  ggplot(df, aes(x = vc * 100, y = rel, color = ve)) +
+  p <- ggplot(df, aes(x = vc * 100, y = rel, color = ve)) +
     geom_line(linewidth = 0.9) +
     geom_point(size = 2) +
-    facet_wrap(~ setting, ncol = 2) +
     scale_color_manual(values = cols_use, name = "Vaccine efficacy") +
     coord_cartesian(ylim = c(-100, 0)) +
     theme_bw() +
     labs(x = "Vaccine coverage (%)", y = "Relative change (%)", title = title_txt)
+  if (facet_setting) {
+    p <- p + facet_wrap(~ setting, ncol = 2)
+  }
+  p
+}
+
+plot_vacc_cdi <- function(cols_use) {
+  df <- vacc_df[vacc_df$metric %in% c("Total CDI", "Primo CDI", "Recidive CDI") & vacc_df$setting == "All", ]
+  df$metric <- factor(df$metric, levels = c("Total CDI", "Primo CDI", "Recidive CDI"))
+  ggplot(df, aes(x = vc * 100, y = rel, color = ve)) +
+    geom_line(linewidth = 0.9) +
+    geom_point(size = 2) +
+    facet_wrap(~ metric, ncol = 3) +
+    scale_color_manual(values = cols_use, name = "Vaccine efficacy") +
+    coord_cartesian(ylim = c(-100, 0)) +
+    theme_bw() +
+    labs(x = "Vaccine coverage (%)", y = "Relative change (%)", title = "CDI incidence (relative change)")
 }
 
 p_v_prev  <- plot_vacc("Prevalence", "Colonization prevalence (relative change)", ve_cols_prev)
-p_v_total <- plot_vacc("Total CDI", "Total CDI (relative change)", ve_cols_inc)
-p_v_primo <- plot_vacc("Primo CDI", "Primo CDI (relative change)", ve_cols_inc)
-p_v_rec   <- plot_vacc("Recidive CDI", "Recidive CDI (relative change)", ve_cols_inc)
+p_v_cdi   <- plot_vacc_cdi(ve_cols_inc)
 
 print(p_v_prev)
-print(p_v_total)
-print(p_v_primo)
-print(p_v_rec)
+print(p_v_cdi)
  
-p_v_all <- p_v_prev / p_v_total 
-p_v_all <- p_v_primo / p_v_rec
+p_v_all <- p_v_prev / p_v_cdi
 
 print(p_v_all)
-ggplot2::ggsave("plots_vaccination.png", p_v_all, width = 12, height = 16, dpi = 300)
+ggplot2::ggsave("plots_vaccination.png", p_v_all, width = 12, height = 10, dpi = 300)
 
 ###############################################################################
 # 5. ATB + VACCINATION COMBINED (relative change)

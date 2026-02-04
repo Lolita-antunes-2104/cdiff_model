@@ -7,14 +7,14 @@
 ###############################################################################
 
 # Clear workspace
-rm(list = ls())
+#rm(list = ls())
 
 # Packages & sources 
 source("0_package.R")
 source("1_model.R")
 source("2_function.R")
 source("3_calibration.R")
-source("5_plot.R")
+source("plot_cal.R")
 
 
 ###############################################################################
@@ -229,6 +229,24 @@ params_calib[names(calib_res$best$par)] <- calib_res$best$par
 out_calib <- run_calib_model_to_equilibrium(params_calib, init_cond, time_vec_calib, threshold_calib)
 metrics_calib <- compute_metrics_calib(out_calib, params_calib)
 
+# Alpha at end of simulation (fixed value)
+last_calib <- out_calib[nrow(out_calib), ]
+tot_h_calib <- compute_totals(last_calib$S0_h, last_calib$C0_h, last_calib$SA_h, last_calib$CA_h,
+                              last_calib$I_h, last_calib$S_II_h, last_calib$C_II_h, last_calib$I_II_h,
+                              last_calib$S_III_h, last_calib$C_III_h, last_calib$I_III_h)
+tot_c_calib <- compute_totals(last_calib$S0_c, last_calib$C0_c, last_calib$SA_c, last_calib$CA_c,
+                              last_calib$I_c, last_calib$S_II_c, last_calib$C_II_c, last_calib$I_II_c,
+                              last_calib$S_III_c, last_calib$C_III_c, last_calib$I_III_c)
+out_hc_calib <- params_calib["delta"] * (tot_h_calib$S + tot_h_calib$C) +
+  params_calib["delta_I"] * last_calib$I_h +
+  params_calib["delta_II"] * last_calib$I_II_h +
+  params_calib["delta_III"] * last_calib$I_III_h
+den_alpha_calib <- params_calib["w"] * (tot_c_calib$S + tot_c_calib$C) +
+  params_calib["w_I"] * last_calib$I_c +
+  params_calib["w_II"] * last_calib$I_II_c +
+  params_calib["w_III"] * last_calib$I_III_c
+alpha_end <- if (den_alpha_calib == 0) 0 else out_hc_calib / den_alpha_calib
+
 # Quick check: print last values vs targets
 cat("\n--- CALIBRATION CHECK (last time point) ---\n")
 cat("prevalence_h:", tail(metrics_calib$carriage$prev_h, 1), " target:", target_metrics$prevalence_h, "\n")
@@ -237,6 +255,18 @@ cat("incidence_h :", tail(metrics_calib$incidence_instant$inc_h_total_abs, 1), "
 cat("incidence_c :", tail(metrics_calib$incidence_instant$inc_c_total_abs, 1), " target:", target_metrics$incidence_c, "\n")
 cat("recid_1     :", tail(metrics_calib$recurrence$rec1, 1), " target:", target_metrics$recid_1, "\n")
 cat("recid_2     :", tail(metrics_calib$recurrence$rec2, 1), " target:", target_metrics$recid_2, "\n")
+
+# Calibration table (plot 1)
+plot_calibration_table1(params_calib, metrics_calib, target_metrics)
+
+# Calibration table (plot 2 - detailed outputs)
+plot_calibration_table2(metrics_calib, target_metrics)
+
+# Calibration table (plot 3 - all parameters)
+plot_calibration_table3(params_calib, metrics_calib, alpha_end)
+
+# Calibration table (plot 4 - stratified parameters)
+plot_calibration_table4(params_calib, metrics_calib, alpha_end)
 
 
 
@@ -280,13 +310,6 @@ res_eq <- list(
   N_c = N_c
 )
 saveRDS(res_eq, "results_equilibrium.rds")
-
-
-
-
-
-
-
 
 
 

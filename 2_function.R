@@ -227,6 +227,121 @@ compute_R0 <- function(params, N_h0, N_c0) {
   })
 }
 
+# Compute R0 at the end of simulation using a numeric NGM (fixed alpha_end)
+# - state: last row of the simulation (named vector or 1-row data.frame)
+# - params: parameter vector
+compute_R0_end_numeric <- function(state, params, h = 1e-6) {
+  
+  # Keep a clean named state vector
+  state_in <- state
+  if (is.data.frame(state_in)) {
+    state_in <- state_in[1, ]
+  }
+  state_vec <- as.numeric(state_in)
+  names(state_vec) <- names(state_in)
+  
+  # List of infected compartments (order matters)
+  inf_names <- c("C0_h","CA_h","I_h","C_II_h","I_II_h","C_III_h","I_III_h",
+                 "C0_c","CA_c","I_c","C_II_c","I_II_c","C_III_c","I_III_c")
+  
+  # Compute alpha at equilibrium (fixed value)
+  params_list <- as.list(params)
+  with(as.list(c(state_vec, params_list)), {
+    tot_h <- compute_totals(S0_h, C0_h, SA_h, CA_h, I_h, S_II_h, C_II_h, I_II_h, S_III_h, C_III_h, I_III_h)
+    tot_c <- compute_totals(S0_c, C0_c, SA_c, CA_c, I_c, S_II_c, C_II_c, I_II_c, S_III_c, C_III_c, I_III_c)
+    out_hc <- delta * (tot_h$S + tot_h$C) + delta_I * I_h + delta_II * I_II_h + delta_III * I_III_h
+    den_alpha <- w * (tot_c$S + tot_c$C) + w_I * I_c + w_II * I_II_c + w_III * I_III_c
+    alpha_end <- if (den_alpha == 0) 0 else out_hc / den_alpha
+  })
+  
+  # Helper: compute lambdas from a state
+  get_lambda <- function(st) {
+    with(as.list(c(st, params_list)), {
+      th <- compute_totals(S0_h, C0_h, SA_h, CA_h, I_h, S_II_h, C_II_h, I_II_h, S_III_h, C_III_h, I_III_h)
+      tc <- compute_totals(S0_c, C0_c, SA_c, CA_c, I_c, S_II_c, C_II_c, I_II_c, S_III_c, C_III_c, I_III_c)
+      list(
+        lambda_h = compute_lambda(beta_h, th$C, th$I_tot, th$N, nu_h),
+        lambda_c = compute_lambda(beta_c, tc$C, tc$I_tot, tc$N, nu_c)
+      )
+    })
+  }
+  
+  # F vector (new infections only)
+  F_vec <- function(st) {
+    l <- get_lambda(st)
+    c(
+      l$lambda_h * st["S0_h"],     # C0_h
+      l$lambda_h * st["SA_h"],     # CA_h
+      0,                           # I_h
+      l$lambda_h * st["S_II_h"],   # C_II_h
+      0,                           # I_II_h
+      l$lambda_h * st["S_III_h"],  # C_III_h
+      0,                           # I_III_h
+      l$lambda_c * st["S0_c"],     # C0_c
+      l$lambda_c * st["SA_c"],     # CA_c
+      0,                           # I_c
+      l$lambda_c * st["S_II_c"],   # C_II_c
+      0,                           # I_II_c
+      l$lambda_c * st["S_III_c"],  # C_III_c
+      0                            # I_III_c
+    )
+  }
+  
+  # Full derivatives for infected compartments (alpha fixed = alpha_end)
+  d_infected <- function(st) {
+    l <- get_lambda(st)
+    with(as.list(c(st, params_list)), {
+      alpha_I <- alpha_end * w_I
+      alpha_II <- alpha_end * w_II
+      alpha_III <- alpha_end * w_III
+      
+      dC0_h  <- l$lambda_h * S0_h - gamma_h * C0_h - tau_h * C0_h + omega_h * CA_h - sigma_h * C0_h + alpha_end * C0_c - delta * C0_h
+      dCA_h  <- l$lambda_h * SA_h - gamma_h * CA_h + tau_h * C0_h - omega_h * CA_h - k_A * sigma_h * CA_h + alpha_end * CA_c - delta * CA_h
+      dI_h   <- sigma_h * C0_h + k_A * sigma_h * CA_h - epsilon_h * I_h + alpha_I * I_c - delta_I * I_h
+      dCII_h <- (1 - p_h) * epsilon_h * I_h + l$lambda_h * S_II_h - gamma_h * C_II_h - k_II * sigma_h * C_II_h + alpha_end * C_II_c - delta * C_II_h
+      dI2_h  <- k_II * sigma_h * C_II_h - epsilon_h * I_II_h + alpha_II * I_II_c - delta_II * I_II_h
+      dCIII_h <- (1 - p_h) * epsilon_h * (I_II_h + I_III_h) + l$lambda_h * S_III_h - gamma_h * C_III_h - k_III * sigma_h * C_III_h + alpha_end * C_III_c - delta * C_III_h
+      dI3_h  <- k_III * sigma_h * C_III_h - epsilon_h * I_III_h + alpha_III * I_III_c - delta_III * I_III_h
+      
+      dC0_c  <- l$lambda_c * S0_c - gamma_c * C0_c - tau_c * C0_c + omega_c * CA_c - sigma_c * C0_c - alpha_end * C0_c + delta * C0_h
+      dCA_c  <- l$lambda_c * SA_c - gamma_c * CA_c + tau_c * C0_c - omega_c * CA_c - k_A * sigma_c * CA_c - alpha_end * CA_c + delta * CA_h
+      dI_c   <- sigma_c * C0_c + k_A * sigma_c * CA_c - epsilon_c * I_c - alpha_I * I_c
+      dCII_c <- (1 - p_c) * epsilon_c * I_c + l$lambda_c * S_II_c - gamma_c * C_II_c - k_II * sigma_c * C_II_c - alpha_end * C_II_c + delta * C_II_h + (1 - prop) * delta_I * I_h
+      dI2_c  <- k_II * sigma_c * C_II_c - epsilon_c * I_II_c - alpha_II * I_II_c
+      dCIII_c <- (1 - p_c) * epsilon_c * (I_II_c + I_III_c) + l$lambda_c * S_III_c - gamma_c * C_III_c - k_III * sigma_c * C_III_c - alpha_end * C_III_c + delta * C_III_h + (1 - prop) * (delta_II * I_II_h + delta_III * I_III_h)
+      dI3_c  <- k_III * sigma_c * C_III_c - epsilon_c * I_III_c - alpha_III * I_III_c
+      
+      c(dC0_h, dCA_h, dI_h, dCII_h, dI2_h, dCIII_h, dI3_h,
+        dC0_c, dCA_c, dI_c, dCII_c, dI2_c, dCIII_c, dI3_c)
+    })
+  }
+  
+  # Numeric Jacobian (simple finite differences)
+  jacobian_num <- function(fun, st) {
+    n <- length(inf_names)
+    base <- fun(st)
+    J <- matrix(0, n, n)
+    for (j in seq_len(n)) {
+      st2 <- st
+      step <- h * max(1, abs(st[inf_names[j]]))
+      st2[inf_names[j]] <- st2[inf_names[j]] + step
+      J[, j] <- (fun(st2) - base) / step
+    }
+    rownames(J) <- inf_names
+    colnames(J) <- inf_names
+    J
+  }
+  
+  Fmat <- jacobian_num(F_vec, state_vec)
+  Vmat <- jacobian_num(function(s) d_infected(s) - F_vec(s), state_vec)
+  
+  K <- Fmat %*% solve(Vmat)
+  ev <- eigen(K, only.values = TRUE)$values
+  R0 <- max(Mod(ev))
+  
+  list(R0 = R0, K = K, F = Fmat, V = Vmat, alpha_end = alpha_end)
+}
+
 
 # Main metrics function for the calibration model
 compute_metrics_calib <- function(out, params) {
@@ -285,8 +400,8 @@ compute_metrics_calib <- function(out, params) {
     rec1 <- ifelse(I1 == 0, 0, I2 / I1)                             # recid_1
     rec2 <- ifelse(I2 == 0, 0, I3 / I2)                             # recid_2
     
-    # ---- R0 (simple proxy time series) ----
-    R0_df <- compute_R0(params_vec, N_h0 = N_h, N_c0 = N_c)
+    # ---- R0 at end of simulation (numeric NGM, fixed alpha_end) ----
+    R0_df <- compute_R0_end_numeric(last, params_vec)
     
     return(list(
       population = data.frame(time = last$time, N_h = N_h, N_c = N_c, N_tot = N_tot),
@@ -474,8 +589,6 @@ compute_metrics_scenario <- function(out, params) {
     ))
   })
 }
-
-
 
 
 

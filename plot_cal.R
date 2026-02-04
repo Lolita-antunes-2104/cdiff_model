@@ -40,6 +40,19 @@ plot_grid_search_generic <- function(grid_result, targets,
   tx <- targets[[x_target]]
   ty <- targets[[y_target]]
   
+  # Axis ranges (for label placement)
+  x_min <- min(df_ok[[x_var]])
+  x_max <- max(df_ok[[x_var]])
+  y_min <- min(df_ok[[y_var]])
+  y_max <- max(df_ok[[y_var]])
+  x_pad <- (x_max - x_min) * 0.06
+  y_pad <- (y_max - y_min) * 0.08
+  
+  # Best guess label uses parameter names (first two grid columns)
+  param_names <- names(grid_result$grid)[1:2]
+  best_label <- paste0(param_names[1], "=", signif(best[[param_names[1]]], 4),
+                       "\n", param_names[2], "=", signif(best[[param_names[2]]], 4))
+  
   # Plot
   p <- ggplot(df_ok, aes(x = .data[[x_var]], y = .data[[y_var]])) +
     
@@ -58,11 +71,21 @@ plot_grid_search_generic <- function(grid_result, targets,
     geom_vline(xintercept = tx, linetype = "dashed", color = "red") +
     geom_hline(yintercept = ty, linetype = "dashed", color = "red") +
     
+    # Target values on axes (red)
+    annotate("text", x = tx, y = -Inf, label = sprintf("%.4g", tx),
+             color = "red", vjust = 1.6, size = 3) +
+    annotate("text", x = -Inf, y = ty, label = sprintf("%.4g", ty),
+             color = "red", hjust = 1.6, size = 3) +
+    
     # Best guess in blue
     geom_point(data = best, aes(x = .data[[x_var]], y = .data[[y_var]]),
                color = "blue", size = 3) +
+    geom_label(data = best, aes(x = .data[[x_var]], y = .data[[y_var]], label = best_label),
+               color = "blue", fill = NA, linewidth = 0.3, hjust = -0.1, vjust = 0.5, size = 3) +
     
+    coord_cartesian(clip = "off") +
     theme_bw() +
+    theme(plot.margin = margin(10, 10, 30, 40)) +
     labs(x = x_lab, y = y_lab, title = title, subtitle = subtitle)
   
   return(p)
@@ -135,6 +158,476 @@ plot_grid_search_k <- function(grid_result, targets) {
 # 2. CALIBRATION PLOT
 ###############################################################################
 
+make_table_theme <- function(nrow_df) {
+  gridExtra::ttheme_default(
+    core = list(
+      fg_params = list(hjust = 0.5, x = 0.5, fontsize = 9),
+      bg_params = list(fill = rep(c("white", "grey95"), length.out = nrow_df))
+    ),
+    colhead = list(
+      fg_params = list(fontface = "bold", fontsize = 10, col = "white"),
+      bg_params = list(fill = "steelblue", col = "white")
+    )
+  )
+}
+
+set_cell_fill <- function(grob, fill) {
+  if (!is.null(grob$children) && length(grob$children) > 0) {
+    rect_idx <- which(vapply(grob$children, function(ch) inherits(ch, "rect"), logical(1)))
+    if (length(rect_idx) >= 1) {
+      grob$children[[rect_idx[1]]]$gp$fill <- fill
+      return(grob)
+    }
+  }
+  grob$gp$fill <- fill
+  grob
+}
+
+apply_row_fill <- function(tab, rows, fill, ncol_df) {
+  for (r in rows) {
+    for (c in seq_len(ncol_df)) {
+      idx <- which(tab$layout$t == r + 1 & tab$layout$l == c)
+      if (length(idx) == 1) {
+        tab$grobs[[idx]] <- set_cell_fill(tab$grobs[[idx]], fill)
+      }
+    }
+  }
+  tab
+}
+
+apply_row_bold <- function(tab, rows, ncol_df) {
+  for (r in rows) {
+    for (c in seq_len(ncol_df)) {
+      idx <- which(tab$layout$t == r + 1 & tab$layout$l == c)
+      if (length(idx) == 1) {
+        tab$grobs[[idx]]$gp$fontface <- "bold"
+      }
+    }
+  }
+  tab
+}
+
+make_pretty_table <- function(df) {
+  gridExtra::tableGrob(df, rows = NULL, theme = make_table_theme(nrow(df)))
+}
+
+plot_calibration_table1 <- function(params_calib, metrics_calib, target_metrics, show = TRUE) {
+  
+  # Helper formatting
+  fmt <- function(x) ifelse(is.na(x), "", sprintf("%.4g", x))
+  fmt_pct <- function(x) ifelse(is.na(x), "", sprintf("%+.1f%%", x))
+  
+  # Outputs (last time point)
+  prev_h <- tail(metrics_calib$carriage$prev_h, 1) * 100
+  prev_c <- tail(metrics_calib$carriage$prev_c, 1) * 100
+  inc_h  <- tail(metrics_calib$incidence_instant$inc_h_total_abs, 1) * 365 * 1e5
+  inc_c  <- tail(metrics_calib$incidence_instant$inc_c_total_abs, 1) * 365 * 1e5
+  rec1   <- tail(metrics_calib$recurrence$rec1, 1) * 100
+  rec2   <- tail(metrics_calib$recurrence$rec2, 1) * 100
+  
+  # Targets
+  t_prev_h <- target_metrics$prevalence_h * 100
+  t_prev_c <- target_metrics$prevalence_c * 100
+  t_inc_h  <- target_metrics$incidence_h * 365 * 1e5
+  t_inc_c  <- target_metrics$incidence_c * 365 * 1e5
+  t_rec1   <- target_metrics$recid_1 * 100
+  t_rec2   <- target_metrics$recid_2 * 100
+  
+  # Relative error (%)
+  rel <- function(val, target) {
+    if (is.na(target) || target == 0) return(NA_real_)
+    100 * (val / target - 1)
+  }
+  
+  df <- data.frame(
+    Item = c(
+      "CALIBRATED PARAMETERS:",
+      "  β_h (transmission hospital)",
+      "  β_c (transmission community)",
+      "  σ_h (progression hospital)",
+      "  σ_c (progression community)",
+      "  k_II (recurrence factor 1)",
+      "  k_III (recurrence factor 2+)",
+      "",
+      "OUTPUTS:",
+      "  Carriage hospital",
+      "  Carriage community",
+      "  Incidence hospital",
+      "  Incidence community",
+      "  Recurrence rate 1",
+      "  Recurrence rate 2+"
+    ),
+    Value = c(
+      "",
+      fmt(params_calib["beta_h"]),
+      fmt(params_calib["beta_c"]),
+      fmt(params_calib["sigma_h"]),
+      fmt(params_calib["sigma_c"]),
+      fmt(params_calib["k_II"]),
+      fmt(params_calib["k_III"]),
+      "",
+      "",
+      fmt(prev_h),
+      fmt(prev_c),
+      fmt(inc_h),
+      fmt(inc_c),
+      fmt(rec1),
+      fmt(rec2)
+    ),
+    Units = c(
+      "",
+      "day^-1", "day^-1", "day^-1", "day^-1", "-", "-",
+      "",
+      "",
+      "%", "%", "/100k/year", "/100k/year", "%", "%"
+    ),
+    Target = c(
+      "",
+      "", "", "", "", "", "",
+      "",
+      "",
+      fmt(t_prev_h),
+      fmt(t_prev_c),
+      fmt(t_inc_h),
+      fmt(t_inc_c),
+      fmt(t_rec1),
+      fmt(t_rec2)
+    ),
+    RelError = c(
+      "",
+      "", "", "", "", "", "",
+      "",
+      "",
+      fmt_pct(rel(prev_h, t_prev_h)),
+      fmt_pct(rel(prev_c, t_prev_c)),
+      fmt_pct(rel(inc_h, t_inc_h)),
+      fmt_pct(rel(inc_c, t_inc_c)),
+      fmt_pct(rel(rec1, t_rec1)),
+      fmt_pct(rel(rec2, t_rec2))
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  tab <- make_pretty_table(df)
+  
+  if (show) gridExtra::grid.arrange(tab)
+  invisible(tab)
+}
+
+plot_calibration_table2 <- function(metrics_calib, target_metrics, show = TRUE) {
+  
+  fmt <- function(x) ifelse(is.na(x), "", sprintf("%.4g", x))
+  
+  # Basic values
+  N_h <- metrics_calib$population$N_h[1]
+  N_c <- metrics_calib$population$N_c[1]
+  N_tot <- N_h + N_c
+  
+  prev_h <- tail(metrics_calib$carriage$prev_h, 1)
+  prev_c <- tail(metrics_calib$carriage$prev_c, 1)
+  prev_tot <- (prev_h * N_h + prev_c * N_c) / N_tot
+  
+  scale_inc <- 365 * 1e5
+  
+  inc_h_abs <- tail(metrics_calib$incidence_instant$inc_h_total_abs, 1) * scale_inc
+  inc_c_abs <- tail(metrics_calib$incidence_instant$inc_c_total_abs, 1) * scale_inc
+  inc_tot_abs <- inc_h_abs + inc_c_abs
+  inc_h_rel <- tail(metrics_calib$incidence_instant$inc_h_total_rel, 1) * scale_inc
+  inc_c_rel <- tail(metrics_calib$incidence_instant$inc_c_total_rel, 1) * scale_inc
+  
+  inc_h_primo_abs <- tail(metrics_calib$incidence_instant$inc_h_primo_abs, 1) * scale_inc
+  inc_c_primo_abs <- tail(metrics_calib$incidence_instant$inc_c_primo_abs, 1) * scale_inc
+  inc_primo_abs <- inc_h_primo_abs + inc_c_primo_abs
+  
+  inc_h_rec_abs <- tail(metrics_calib$incidence_instant$inc_h_rec_abs, 1) * scale_inc
+  inc_c_rec_abs <- tail(metrics_calib$incidence_instant$inc_c_rec_abs, 1) * scale_inc
+  inc_rec_abs <- inc_h_rec_abs + inc_c_rec_abs
+  
+  rec1 <- tail(metrics_calib$recurrence$rec1, 1) * 100
+  rec2 <- tail(metrics_calib$recurrence$rec2, 1) * 100
+  
+  # R0h / R0c from NGM blocks if available
+  R0h <- NA_real_
+  R0c <- NA_real_
+  if (!is.null(metrics_calib$R0$K)) {
+    K <- metrics_calib$R0$K
+    if (nrow(K) >= 14) {
+      K_h <- K[1:7, 1:7]
+      K_c <- K[8:14, 8:14]
+      R0h <- max(Mod(eigen(K_h, only.values = TRUE)$values))
+      R0c <- max(Mod(eigen(K_c, only.values = TRUE)$values))
+    }
+  }
+  
+  df <- data.frame(
+    Output = c(
+      "Prev total",
+      "Prev hospital",
+      "Prev community",
+      "CDI incidence total (absolute)",
+      "CDI incidence hospital (absolute)",
+      "CDI incidence community (absolute)",
+      "CDI incidence hospital (relative)",
+      "CDI incidence community (relative)",
+      "Primo CDI incidence total (absolute)",
+      "Primo CDI incidence hospital (absolute)",
+      "Primo CDI incidence community (absolute)",
+      "Rec CDI incidence total (absolute)",
+      "Rec CDI incidence hospital (absolute)",
+      "Rec CDI incidence community (absolute)",
+      "Recidive I_II / I",
+      "Recidive I_III / I_II",
+      "R0 hospital",
+      "R0 community"
+    ),
+    Value = c(
+      fmt(prev_tot * 100),
+      fmt(prev_h * 100),
+      fmt(prev_c * 100),
+      fmt(inc_tot_abs),
+      fmt(inc_h_abs),
+      fmt(inc_c_abs),
+      fmt(inc_h_rel),
+      fmt(inc_c_rel),
+      fmt(inc_primo_abs),
+      fmt(inc_h_primo_abs),
+      fmt(inc_c_primo_abs),
+      fmt(inc_rec_abs),
+      fmt(inc_h_rec_abs),
+      fmt(inc_c_rec_abs),
+      fmt(rec1),
+      fmt(rec2),
+      fmt(R0h),
+      fmt(R0c)
+    ),
+    Units = c(
+      "%", "%", "%", "/100k/year", "/100k/year", "/100k/year", "/100k/year", "/100k/year",
+      "/100k/year", "/100k/year", "/100k/year", "/100k/year", "/100k/year", "/100k/year",
+      "%", "%", "-", "-"
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  tab <- make_pretty_table(df)
+  if (show) gridExtra::grid.arrange(tab)
+  invisible(tab)
+}
+
+plot_calibration_table3 <- function(params_calib, metrics_calib, alpha_end = NA_real_, show = TRUE) {
+  
+  fmt <- function(x) ifelse(is.na(x), "", sprintf("%.4g", x))
+  same_val <- function(a, b) isTRUE(all.equal(a, b, tolerance = 1e-12))
+  
+  # Values
+  N_h <- metrics_calib$population$N_h[1]
+  N_c <- metrics_calib$population$N_c[1]
+  if (is.na(alpha_end) && !is.null(metrics_calib$R0$alpha_end)) {
+    alpha_end <- metrics_calib$R0$alpha_end
+  }
+  
+  rows <- data.frame(
+    Parameter = c(
+      "N (population size)",
+      "β (transmission rate)",
+      "ν (relative infectiousness I vs C)",
+      "σ (baseline progression C→I)",
+      "τ (antibiotic exposure rate)",
+      "ω (dysbiosis recovery rate)",
+      "γ (natural clearance)",
+      "ε (CDI resolution)",
+      "p (post-CDI protection)",
+      "φ (loss of period at risk)",
+      "prop (discharge to S_II vs C_II)",
+      "δ (discharge rate)",
+      "α (admission at equilibrium)"
+    ),
+    Hospital = c(
+      N_h,
+      params_calib["beta_h"],
+      params_calib["nu_h"],
+      params_calib["sigma_h"],
+      params_calib["tau_h"],
+      params_calib["omega_h"],
+      params_calib["gamma_h"],
+      params_calib["epsilon_h"],
+      params_calib["p_h"],
+      params_calib["phi_h"],
+      params_calib["prop"],
+      params_calib["delta"],
+      alpha_end
+    ),
+    Community = c(
+      N_c,
+      params_calib["beta_c"],
+      params_calib["nu_c"],
+      params_calib["sigma_c"],
+      params_calib["tau_c"],
+      params_calib["omega_c"],
+      params_calib["gamma_c"],
+      params_calib["epsilon_c"],
+      params_calib["p_c"],
+      params_calib["phi_c"],
+      params_calib["prop"],
+      params_calib["delta"],
+      alpha_end
+    ),
+    Units = c(
+      "persons",
+      "day^-1", "–", "day^-1", "day^-1", "day^-1", "day^-1", "day^-1",
+      "–", "day^-1", "–", "day^-1", "day^-1"
+    ),
+    Stratified = c(
+      "no",
+      "no",
+      "no",
+      "yes",
+      "no",
+      "no",
+      "no",
+      "no",
+      "no",
+      "no",
+      "no",
+      "yes",
+      "yes"
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  # Format values as strings
+  df <- rows
+  df$Hospital <- fmt(df$Hospital)
+  df$Community <- fmt(df$Community)
+  
+  tab <- make_pretty_table(df)
+  
+  # Merge cells when Hospital == Community
+  for (i in seq_len(nrow(rows))) {
+    if (same_val(rows$Hospital[i], rows$Community[i])) {
+      idx_h <- which(tab$layout$t == i + 1 & tab$layout$l == 2)
+      idx_c <- which(tab$layout$t == i + 1 & tab$layout$l == 3)
+      if (length(idx_h) == 1) {
+        tab$layout$r[idx_h] <- 3
+        tab$grobs[[idx_h]]$x <- grid::unit(0.5, "npc")
+        tab$grobs[[idx_h]]$hjust <- 0.5
+      }
+      if (length(idx_c) == 1) {
+        tab$grobs[[idx_c]] <- grid::nullGrob()
+      }
+    }
+  }
+  
+  if (show) gridExtra::grid.arrange(tab)
+  invisible(tab)
+}
+
+plot_calibration_table4 <- function(params_calib, metrics_calib, alpha_end = NA_real_, show = TRUE) {
+  
+  fmt <- function(x) ifelse(is.na(x), "", sprintf("%.4g", x))
+  same_val <- function(a, b) isTRUE(all.equal(a, b, tolerance = 1e-12))
+  
+  if (is.na(alpha_end) && !is.null(metrics_calib$R0$alpha_end)) {
+    alpha_end <- metrics_calib$R0$alpha_end
+  }
+  
+  rows <- data.frame(
+    Parameter = c(
+      "σ (baseline progression C→I)",
+      "k_A (progression factor for CA)",
+      "k_II (recurrence factor 1)",
+      "k_III (recurrence factor 2+)",
+      "σ_A (CA → I)",
+      "σ_II (C_II → I_II)",
+      "σ_III (C_III → I_III)",
+      "δ (discharge S, C)",
+      "δ_I (discharge I)",
+      "δ_II (discharge I_II)",
+      "δ_III (discharge I_III)",
+      "α (admission S, C)",
+      "α_I (admission I)",
+      "α_II (admission I_II)",
+      "α_III (admission I_III)"
+    ),
+    Hospital = c(
+      params_calib["sigma_h"],
+      params_calib["k_A"],
+      params_calib["k_II"],
+      params_calib["k_III"],
+      params_calib["k_A"] * params_calib["sigma_h"],
+      params_calib["k_II"] * params_calib["sigma_h"],
+      params_calib["k_III"] * params_calib["sigma_h"],
+      params_calib["delta"],
+      params_calib["delta_I"],
+      params_calib["delta_II"],
+      params_calib["delta_III"],
+      alpha_end,
+      alpha_end * params_calib["w_I"],
+      alpha_end * params_calib["w_II"],
+      alpha_end * params_calib["w_III"]
+    ),
+    Community = c(
+      params_calib["sigma_c"],
+      params_calib["k_A"],
+      params_calib["k_II"],
+      params_calib["k_III"],
+      params_calib["k_A"] * params_calib["sigma_c"],
+      params_calib["k_II"] * params_calib["sigma_c"],
+      params_calib["k_III"] * params_calib["sigma_c"],
+      params_calib["delta"],
+      params_calib["delta_I"],
+      params_calib["delta_II"],
+      params_calib["delta_III"],
+      alpha_end,
+      alpha_end * params_calib["w_I"],
+      alpha_end * params_calib["w_II"],
+      alpha_end * params_calib["w_III"]
+    ),
+    Units = c(
+      "day^-1",
+      "–",
+      "–",
+      "–",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1",
+      "day^-1"
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  df <- rows
+  df$Hospital <- fmt(df$Hospital)
+  df$Community <- fmt(df$Community)
+  
+  tab <- make_pretty_table(df)
+  
+  # Merge cells when Hospital == Community
+  for (i in seq_len(nrow(rows))) {
+    if (same_val(rows$Hospital[i], rows$Community[i])) {
+      idx_h <- which(tab$layout$t == i + 1 & tab$layout$l == 2)
+      idx_c <- which(tab$layout$t == i + 1 & tab$layout$l == 3)
+      if (length(idx_h) == 1) {
+        tab$layout$r[idx_h] <- 3
+        tab$grobs[[idx_h]]$x <- grid::unit(0.5, "npc")
+        tab$grobs[[idx_h]]$hjust <- 0.5
+      }
+      if (length(idx_c) == 1) {
+        tab$grobs[[idx_c]] <- grid::nullGrob()
+      }
+    }
+  }
+  
+  if (show) gridExtra::grid.arrange(tab)
+  invisible(tab)
+}
+
 
 
 
@@ -197,7 +690,8 @@ plot_dynamics <- function(ode_result, targets, N_h, N_c) {
   p_c <- build_plot(df_c, target_C_c, "Model dynamics - Community")
   
   # Combine side by side
-  p_both <- p_h + p_c + patchwork::plot_layout(ncol = 2, guides = "collect")
+  p_both <- p_h + p_c + patchwork::plot_layout(ncol = 2, guides = "collect") &
+    theme(legend.position = "bottom")
   
   # Return everything (useful if you want to save individual panels)
   return(list(hospital = p_h, community = p_c, both = p_both))
